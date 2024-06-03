@@ -12,8 +12,8 @@
 
 **Example Plots:**
 
-Full training plot
+Fully Trained Plot
 ![Example Image](example_plots/pointNET_hist.png)
 
-Debug mode plot
+Debug Mode Plot
 ![Example Image](example_plots/debug_pointNET_hist.png)
