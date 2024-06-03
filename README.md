@@ -1,4 +1,4 @@
-Steps:
+**Steps:**
 
 0. Download data from `https://drive.google.com/file/d/1g_ixtP0aehUQ-Z7vz9QmB5MyfiiUDVPF/view?usp=sharing` (I'll upload zip version later)
 1. Add data called `train_X_y_ver_all_xyz_energy.pt` into `/data` folder
@@ -6,11 +6,11 @@ Steps:
 3. run `. multiple_exp.sh` (edit bash file to change configuration such as adding --debug to run **sample** of data)
 4. See if you can replicate plots inside `example_plots` folder
 
-Notes:
+**Notes:**
 - Full training should take ~20 min (based on 4 x A5000)
 - The code is agnostic of device (gpu, cpu, multi-gpu)
 
-Example Plots:
+**Example Plots:**
 
 Full training plot
 ![Example Image](example_plots/pointNET_hist.png)
