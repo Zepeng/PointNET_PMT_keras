@@ -8,6 +8,8 @@ Notes:
 - Full training should take ~20 min (based on 4 x A5000)
 - The code is agnostic of device (gpu, cpu, multi-gpu)
 
+Example Plots:
+
 Full training plot
 ![Example Image](example_plots/pointNET_hist.png)
 
