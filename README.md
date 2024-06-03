@@ -6,6 +6,7 @@ Steps:
 
 Notes:
 - Full training should take ~20 min
+- The code is agnostic of device (gpu, cpu, multi-gpu)
 
 Full training plot
 ![Example Image](example_plots/pointNET_hist.png)
