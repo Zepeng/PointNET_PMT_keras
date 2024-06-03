@@ -5,7 +5,7 @@ Steps:
 4. See if you can replicate plots inside `example_plots` folder
 
 Notes:
-- Full training should take ~20 min
+- Full training should take ~20 min (4 x A5000)
 - The code is agnostic of device (gpu, cpu, multi-gpu)
 
 Full training plot
