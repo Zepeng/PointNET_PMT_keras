@@ -119,7 +119,7 @@ model = PointClassifier(
 nparam = sum([p.numel() for p in model.parameters()])
 accelerator.print(f"num. parameters: {nparam}")
 optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-state_dict = torch.load(save_name+".pt")
+state_dict = torch.load(save_name+".pt", map_location=accelerator.device)
 if hasattr(model, "module"):
     model.module.load_state_dict(state_dict)
 else:

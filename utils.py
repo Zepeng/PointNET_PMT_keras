@@ -164,7 +164,7 @@ def plot_reg(diff, dist, total_val_loss, abs_diff, save_name, args):
     axes[0,2].set_xlabel('z diff')
     axes[0,2].set_ylabel('freq')
 
-    energy_diff_range = (0, 1)
+    energy_diff_range = (-0.5, 0.5)
     axes[0,3].hist(energy_diff, bins=20, range=energy_diff_range, edgecolor='black')
     axes[0,3].set_title(r"energy_diff ($energy - \hat{energy}$)")
     axes[0,3].set_xlabel('energy diff')
@@ -186,8 +186,8 @@ def plot_reg(diff, dist, total_val_loss, abs_diff, save_name, args):
     axes[1,1].set_ylabel('freq')
 
     z_range = (-250, 250)
-    axes[1,2].hist(x, bins=20, range=x_range, edgecolor='black', label="z")
-    axes[1,2].hist(x_pred, bins=20, range=x_range, edgecolor='blue', label=r'$\hat{z}$', alpha=0.5)
+    axes[1,2].hist(z, bins=20, range=z_range, edgecolor='black', label="z")
+    axes[1,2].hist(z_pred, bins=20, range=z_range, edgecolor='blue', label=r'$\hat{z}$', alpha=0.5)
     axes[1,2].set_title("z dist")
     axes[1,2].set_xlabel(r'z')
     axes[1,2].set_ylabel('freq')
@@ -195,13 +195,14 @@ def plot_reg(diff, dist, total_val_loss, abs_diff, save_name, args):
     energy_range = (0, 4)
     axes[1,3].hist(energy, bins=20, range=energy_range, edgecolor='black', label="label")
     axes[1,3].hist(energy_pred, bins=20, range=energy_range, edgecolor='blue', label="pred", alpha=0.5)
-    axes[1,3].set_title(r"energy_diff ($energy - \hat{energy}$)")
-    axes[1,3].set_xlabel('energy diff')
+    axes[1,3].set_title("energy")
+    axes[1,3].set_xlabel('energy')
     axes[1,3].set_ylabel('freq')
 
     axes[1, 0].legend()
     axes[1, 1].legend()
     axes[1, 2].legend()
+    axes[1, 3].legend()
 
     plt.savefig(save_name + "_hist.png")
     plt.close()
