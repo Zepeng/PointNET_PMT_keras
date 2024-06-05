@@ -40,7 +40,7 @@ parser.add_argument('--mean_only', action="store_true")
 parser.add_argument('--save_best', action="store_true")
 parser.add_argument('--seed', type=int, default=999)
 parser.add_argument('--patience', type=int, default=15)
-parser.add_argument('--energy_mult', type=int, default=10)
+
 
 ## Initiate accelerator (distributed training) + flush output to {ver}/train.txt
 args = parser.parse_args()
@@ -128,33 +128,33 @@ with tqdm(total=args.epochs, mininterval=10) as pbar:
     tot_train_lst = []
     for epoch in epochs:
         model.train()
-        total_train_loss = 0
-        total_xyz_loss = 0 ##
-        total_energy_loss = 0 ##
+        total_loss = 0
         for i, batch in enumerate(train_loader):
             ## forward prop
             X, y = batch
             out = model(X)
-            energy_mult = args.energy_mult ## scale energy loss
+            energy_mult = 160 ## scale energy loss
             out[:, -1], y[:, -1] = energy_mult * out[:, -1], energy_mult * y[:, -1] 
             loss = F.mse_loss(out, y)
+            train_loss = loss 
 
             ## backward prop
-            accelerator.backward(loss)
+            accelerator.backward(train_loss)
 
             ## logging purposes
             with torch.no_grad():
-                total_train_loss += loss.item()
+                total_loss += train_loss.item()
             ## update grad
             optimizer.step()
             optimizer.zero_grad()
 
-        total_train_loss /= len(train_loader)
-        tot_train_lst.append(total_train_loss)
+        total_loss /= len(train_loader)
+        tot_train_lst.append(total_loss)
 
         ## reduce lr on pleatau
         accelerator.print(f"min train loss: {min(tot_train_lst)}")
-        scheduler.step(total_train_loss)
+        prev_lr = optimizer.param_groups[0]['lr']
+        scheduler.step(total_loss)
 
         ## validation
         if epoch % 10 == 0 or epoch == args.epochs-1:
@@ -166,15 +166,16 @@ with tqdm(total=args.epochs, mininterval=10) as pbar:
                     ## forward
                     X, y = batch
                     out = model(X)
-                    out, y = accelerator.gather(out), accelerator.gather(y)
+                    out = accelerator.gather(out)
+                    y = accelerator.gather(y)
                     ## compute metric
                     val_loss = F.mse_loss(out, y)
                     total_val_loss += val_loss.item()
                 total_val_loss /= len(val_loader)
             current_lr = optimizer.param_groups[0]['lr']
-            accelerator.print(f'\nepoch {epoch}, train loss: {total_train_loss:.2f}, val loss: {total_val_loss:.2f}, lr: {current_lr}')
+            accelerator.print(f'\nepoch {epoch}, train loss: {total_loss:.2f}, val loss: {total_val_loss:.2f}, lr: {current_lr}')
             accelerator.log({
-                "train loss": total_train_loss,
+                "train loss": total_loss,
                 "val_loss": total_val_loss,
                 "lr": current_lr,
             })
@@ -187,11 +188,13 @@ with tqdm(total=args.epochs, mininterval=10) as pbar:
             if cond:
                 best_val = total_val_loss
                 if args.save_best:
-                    torch.save(accelerator.get_state_dict(model, unwrap=True), save_name+".pt")
+                    if hasattr(model, "module"):
+                        torch.save(model.module.state_dict(), save_name+".pt")
+                    else:
+                        torch.save(model.state_dict(), save_name+".pt")
                     accelerator.print(f"New Best Score!! Model_saved as {save_name}")
         else:
-            accelerator.log({"train loss": total_train_loss})
-
+            accelerator.log({"train loss": total_loss})
 
 ## time
 tot_time = time() - strt
