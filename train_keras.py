@@ -13,7 +13,7 @@ from pprint import pprint
 from time import time
 import tensorflow as tf
 ## .py imports ##
-from pointnet_keras import *
+from PointNet_keras import *
 from read_point_cloud import * 
 from utils import *
 
@@ -51,7 +51,7 @@ ver = args.save_ver
 init_logfile(ver)
 
 ## file save name
-save_name = f"./{ver}/pointNET.weights"
+save_name = f"./{ver}/pointNET_keras.weights"
 
 
 ## Load/Preprocess Data
