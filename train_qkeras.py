@@ -13,7 +13,7 @@ from pprint import pprint
 from time import time
 import tensorflow as tf
 ## .py imports ##
-from PointNet_qkeras import *
+from PointNet_merge import *
 from read_point_cloud import * 
 from utils import *
 
