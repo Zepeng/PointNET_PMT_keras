@@ -1,10 +1,10 @@
 import torch
-from torch.utils.data import DataLoader
-from torch.utils.data import TensorDataset
-from torch.optim.lr_scheduler import ReduceLROnPlateau
+#from torch.utils.data import DataLoader
+#from torch.utils.data import TensorDataset
+#from torch.optim.lr_scheduler import ReduceLROnPlateau
 import numpy as np
-import matplotlib.pyplot as plt
-import wandb
+#import matplotlib.pyplot as plt
+#import wandb
 import sys
 import os
 import argparse
@@ -13,7 +13,7 @@ from pprint import pprint
 from time import time
 import tensorflow as tf
 ## .py imports ##
-from PointNet_qkeras import *
+from PointNet_merge import *
 from read_point_cloud import * 
 from utils import *
 
@@ -56,17 +56,26 @@ save_name = f"./{ver}/pointNET_qkeras.weights"
 scale_factor = 25.
 ## Load/Preprocess Data
 ## Load data
-pmtxyz = get_pmtxyz("/sdf/group/exo/zpli/pointnet/pmt_xyz.dat")
-#X, y = torch.load(f"/sdf/group/exo/zpli/pointnet/train_X_y_ver_all_xyz_energy.pt", map_location=torch.device("cpu"))
+pmtxyz = get_pmtxyz("/expanse/lustre/scratch/zli10/temp_project/pointnet/pmt_xyz.dat")
 #X.to(torch.float32)
 #y.to(torch.float32)
-data_npz = np.load('/sdf/group/exo/zpli/pointnet/train_X_y_ver_all_xyz_energy.npz')
-X_tf = tf.convert_to_tensor(data_npz['X']/scale_factor, dtype=tf.float32)
-y_tf = tf.convert_to_tensor(data_npz['y']/scale_factor, dtype=tf.float32)
+#data_npz = np.load('/expanse/lustre/scratch/zli10/temp_project/pointnet/train_X_y_ver_all_xyz_energy.npz')
+#X_tf = tf.convert_to_tensor(data_npz['X']/scale_factor, dtype=tf.float32)
+#y_tf = tf.convert_to_tensor(data_npz['y']/scale_factor, dtype=tf.float32)
 #y_tf = tf.concat([y_tf[:, :-1], 160* tf.expand_dims(y_tf[:, -1], axis=-1)], axis=-1) #scale the energy by 160
+# Load Preprocess data
+print("loading data...")
+X, y = torch.load("/expanse/lustre/scratch/zli10/temp_project/pointnet/preprocessed_data.pt")
+X_tf = tf.convert_to_tensor(X.numpy(), dtype=tf.float32)
+y_tf = tf.convert_to_tensor(y.numpy(), dtype=tf.float32)
 if args.debug:
-    small = 1000
+    print("debug got called")
+    small = 5000
     X_tf, y_tf = X_tf[:small], y_tf[:small]
+
+
+# Update batch size
+n_data, args.n_hits, F_dim = X_tf.shape
 
 ## switch to match Aobo's syntax (time, charge, x, y, z) -> (x, y, z, label, time, charge)
 ## insert "label" feature to tensor. This feature (0 or 1) is the activation of sensor

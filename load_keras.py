@@ -57,8 +57,8 @@ save_name = f"./{ver}/pointNET.weights"
 
 ## Load/Preprocess Data
 ## Load data
-pmtxyz = get_pmtxyz("/sdf/group/exo/zpli/pointnet/pmt_xyz.dat")
-X, y = torch.load(f"/sdf/group/exo/zpli/pointnet/train_X_y_ver_all_xyz_energy.pt", map_location=torch.device("cpu"))
+pmtxyz = get_pmtxyz("/expanse/lustre/scratch/zli10/temp_project/pointnet/pmt_xyz.dat")
+X, y = torch.load(f"/expanse/lustre/scratch/zli10/temp_project/pointnet/train_X_y_ver_all_xyz_energy.pt", map_location=torch.device("cpu"))
 X.to(torch.float32)
 y.to(torch.float32)
 #X_np = X.numpy()

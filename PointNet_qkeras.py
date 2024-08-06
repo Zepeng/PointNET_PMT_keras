@@ -47,7 +47,7 @@ def PointClassifier(n_hits, dim, dim_reduce_factor, out_dim, enc_dropout, dec_dr
         label = tf.tile(label, [1, 1, chamfer_x.shape[-1]])
         return chamfer_x * label
     
-    x = layers.Lambda(process_data_with_label)(input_points)
+    #x = layers.Lambda(process_data_with_label)(input_points)
     encoder = PointNetfeat(dim-1, dim_reduce_factor, enc_dropout)
     x = encoder(x)
     x = QDense(int(512/dim_reduce_factor), activation=None, kernel_quantizer=quantized_bits(8, 0), bias_quantizer=quantized_bits(8, 0))(x)
