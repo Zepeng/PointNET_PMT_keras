@@ -48,7 +48,7 @@ if gpus:
 
 args = parser.parse_args()
 ver = args.save_ver
-init_logfile(ver)
+#init_logfile(ver)
 
 ## file save name
 save_name = f"./{ver}/pointNET_keras.weights"
