@@ -4,7 +4,7 @@ import torch
 #from torch.optim.lr_scheduler import ReduceLROnPlateau
 import numpy as np
 #import matplotlib.pyplot as plt
-#import wandb
+import wandb
 import sys
 import os
 import argparse
@@ -56,7 +56,7 @@ save_name = f"./{ver}/pointNET_qkeras.weights"
 scale_factor = 25.
 ## Load/Preprocess Data
 ## Load data
-pmtxyz = get_pmtxyz("/expanse/lustre/scratch/zli10/temp_project/pointnet/pmt_xyz.dat")
+pmtxyz = get_pmtxyz("/home/amigala/PointNET_PMT_keras/data/pmt_xyz.dat")
 #X.to(torch.float32)
 #y.to(torch.float32)
 #data_npz = np.load('/expanse/lustre/scratch/zli10/temp_project/pointnet/train_X_y_ver_all_xyz_energy.npz')
@@ -65,9 +65,12 @@ pmtxyz = get_pmtxyz("/expanse/lustre/scratch/zli10/temp_project/pointnet/pmt_xyz
 #y_tf = tf.concat([y_tf[:, :-1], 160* tf.expand_dims(y_tf[:, -1], axis=-1)], axis=-1) #scale the energy by 160
 # Load Preprocess data
 print("loading data...")
-X, y = torch.load("/expanse/lustre/scratch/zli10/temp_project/pointnet/preprocessed_data.pt")
-X_tf = tf.convert_to_tensor(X.numpy(), dtype=tf.float32)
-y_tf = tf.convert_to_tensor(y.numpy(), dtype=tf.float32)
+# X, y = torch.load("/expanse/lustre/scratch/zli10/temp_project/pointnet/preprocessed_data.pt")
+# X_tf = tf.convert_to_tensor(X.numpy(), dtype=tf.float32)
+# y_tf = tf.convert_to_tensor(y.numpy(), dtype=tf.float32)
+data_npz = np.load('/home/amigala/PointNET_PMT_keras/data/train_X_y_ver_all_xyz_energy.npz')
+X_tf = tf.convert_to_tensor(data_npz['X'], dtype=tf.float32)
+y_tf = tf.convert_to_tensor(data_npz['y'], dtype=tf.float32)
 if args.debug:
     print("debug got called")
     small = 5000
@@ -118,6 +121,16 @@ optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr, beta_1=0.9, beta_2=0
 model.compile(optimizer=optimizer)
 
 ## Train Loop
+wandb.login()
+run = wandb.init(
+    # Set the project where this run will be logged
+    project="pointnet-qkeras"
+    # Track hyperparameters and run metadata
+    # config={
+    #     "learning_rate": lr,
+    #     "epochs": epochs,
+    # }
+)
 
 # Initialize tqdm progress bar
 pbar = tqdm(total=args.epochs, mininterval=10)
@@ -154,7 +167,9 @@ for epoch in range(args.epochs):
     
     # Calculate average training loss for the epoch
     total_loss /= len(train_loader)
+    wandb.log({"Loss":total_loss})
     tot_train_lst.append(total_loss)
+    pbar.update(1)
     
     # Adjust learning rate based on training loss
     #prev_lr = optimizer.learning_rate.numpy()
@@ -162,7 +177,7 @@ for epoch in range(args.epochs):
     #scheduler.step(total_loss)
     
     # Validation every 10 epochs or last epoch
-    if epoch % 10 == 0 or epoch == args.epochs - 1:
+    if epoch == args.epochs - 1:
         total_val_loss = 0
         
         # Validation (evaluation mode)
@@ -176,7 +191,7 @@ for epoch in range(args.epochs):
         total_val_loss /= len(val_loader)
         
         # Update progress bar
-        pbar.update(10)
+        # pbar.update(10)
         
         # Save best model based on validation loss
         if total_val_loss < best_val:

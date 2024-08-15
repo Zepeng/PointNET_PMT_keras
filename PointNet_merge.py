@@ -18,20 +18,26 @@ def PointClassifier(n_hits, dim, dim_reduce_factor, out_dim, enc_dropout, dec_dr
     
     # Begin PointNetfeat operations
     x = QConv1D(64, 1, activation=None, kernel_quantizer=quantized_bits(8, 0), bias_quantizer=quantized_bits(8, 0))(input_points)
-    x = QActivation('quantized_relu(8,0)')(layers.Dropout(enc_dropout)(x))
-    x = QActivation('quantized_relu(8,0)')(layers.Dropout(enc_dropout)(QConv1D(int(128 / dim_reduce_factor), 1, kernel_quantizer=quantized_bits(8, 0), bias_quantizer=quantized_bits(8, 0))(x)))
+    x = layers.Dropout(enc_dropout)(x)
+    x = QActivation('quantized_relu(8,0)')(x)
+    x = QConv1D(int(128 / dim_reduce_factor), 1, kernel_quantizer=quantized_bits(8, 0), bias_quantizer=quantized_bits(8, 0))(x)
+    x = layers.Dropout(enc_dropout)(x)
+    x = QActivation('quantized_relu(8,0)')(x)
     x = QConv1D(int(1024 / dim_reduce_factor), 1, kernel_quantizer=quantized_bits(8, 0), bias_quantizer=quantized_bits(8, 0))(x)
     global_stats = layers.GlobalAveragePooling1D()(x)
     # End PointNetfeat operations
     
     x = global_stats
-    x = QDense(int(512 / dim_reduce_factor), activation=None, kernel_quantizer=quantized_bits(8, 0), bias_quantizer=quantized_bits(8, 0))(x)
-    x = QActivation('quantized_relu(8,0)')(layers.Dropout(dec_dropout)(x))
-    x = QDense(int(128 / dim_reduce_factor), activation=None, kernel_quantizer=quantized_bits(8, 0), bias_quantizer=quantized_bits(8, 0))(x)
-    x = QActivation('quantized_relu(8,0)')(layers.Dropout(dec_dropout)(x))
+    x = QDense(int(512 / dim_reduce_factor), activation='leaky_relu', kernel_quantizer=quantized_bits(8, 0), bias_quantizer=quantized_bits(8, 0))(x)
+    x = layers.Dropout(dec_dropout)(x)
+    # x = QActivation('quantized_relu(8,0)')(x)
+    x = QDense(int(128 / dim_reduce_factor), activation='leaky_relu', kernel_quantizer=quantized_bits(8, 0), bias_quantizer=quantized_bits(8, 0))(x)
+    # x = layers.Dropout(dec_dropout)(x)
+    # x = QActivation('quantized_relu(8,0)')(x)
     outputs = QDense(out_dim, kernel_quantizer=quantized_bits(8, 0), bias_quantizer=quantized_bits(8, 0))(x)
 
     model = models.Model(input_points, outputs)
+    # tf.keras.utils.plot_model(model, to_file='./qkeras_model.png')
     return model
 """
 # Example usage:

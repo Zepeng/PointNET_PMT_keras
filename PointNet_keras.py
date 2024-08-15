@@ -30,25 +30,33 @@ def PointNetfeat(dimensions, dim_reduce_factor, dropout_rate):
     return model
 
 def PointClassifier(n_hits, dim, dim_reduce_factor, out_dim, enc_dropout, dec_dropout):
-    input_points = tf.keras.Input(shape=(n_hits, dim))
+    inputs = tf.keras.Input(shape=(n_hits, dim))
     
-    def process_data_with_label(x):
-        label = x[:, :, 3:4]
-        t = x[:, :, 4:5]
-        q = x[:, :, 5:6]
-        chamfer_x = tf.concat([x[:, :, :3], t, q], axis=-1)
-        label = tf.tile(label, [1, 1, chamfer_x.shape[-1]])
-        return chamfer_x * label
-    
+    # def process_data_with_label(x):
+    #     label = x[:, :, 3:4]
+    #     t = x[:, :, 4:5]
+    #     q = x[:, :, 5:6]
+    #     chamfer_x = tf.concat([x[:, :, :3], t, q], axis=-1)
+    #     label = tf.tile(label, [1, 1, chamfer_x.shape[-1]])
+    #     return chamfer_x * label
+    x = layers.Conv1D(64, 1, activation=None)(inputs)
+    x = layers.Dropout(0.1)(x)
+    x = layers.ReLU()(x)
+    x = layers.Conv1D(int(128 / dim_reduce_factor), 1)(x)
+    x = layers.Dropout(0.1)(x)
+    x = layers.ReLU()(x)
+    x = layers.Conv1D(int(1024 / dim_reduce_factor), 1)(x)
+    x = layers.GlobalAveragePooling1D()(x)
     #x = layers.Lambda(process_data_with_label)(input_points)
-    encoder = PointNetfeat(dim-1, dim_reduce_factor, enc_dropout)
-    x = encoder(x)
+    # encoder = PointNetfeat(dim-1, dim_reduce_factor, enc_dropout)
+    # x = encoder(x)
     x = layers.Dense(int(512/dim_reduce_factor), activation='leaky_relu')(x)
     x = layers.Dropout(dec_dropout)(x)
     x = layers.Dense(int(128/dim_reduce_factor), activation='leaky_relu')(x)
     outputs = layers.Dense(out_dim)(x)
     
-    model = models.Model(input_points, outputs)
+    model = models.Model(inputs, outputs)
+    # tf.keras.utils.plot(model, to_file='./keras_model.png')
     return model
 """
 # Example usage:
