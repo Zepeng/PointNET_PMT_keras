@@ -6,3 +6,5 @@ wandb
 data/preprocessed_data.pt
 data/train_X_y_ver_all_xyz_energy.npz
 data/train_X_y_ver_all_xyz_energy.zip
+keras_nominal
+enc*/

@@ -14,7 +14,7 @@ from time import time
 import tensorflow as tf
 ## .py imports ##
 # from PointNet_keras import *
-from PointNet_merge import *
+from PointNet_merge import * # change this line for the one above for just pure keras
 from read_point_cloud import * 
 from utils import *
 
@@ -39,6 +39,10 @@ parser.add_argument('--seed', type=int, default=999)
 parser.add_argument('--patience', type=int, default=15)
 parser.add_argument('--xyz_label', action="store_true")
 parser.add_argument('--xyz_energy', action="store_true")
+parser.add_argument('--enc_a', type=int, default=8)
+parser.add_argument('--enc_b', type=int, default=0)
+parser.add_argument('--dec_a', type=int, default=8)
+parser.add_argument('--dec_b', type=int, default=0)
 gpus = tf.config.experimental.list_physical_devices('GPU')
 if gpus:
     try:
@@ -50,6 +54,10 @@ if gpus:
 args = parser.parse_args()
 ver = args.save_ver
 #init_logfile(ver)
+
+# check if file exists
+if not os.path.exists(ver):
+    os.makedirs(ver)
 
 ## file save name
 save_name = f"./{ver}/pointNET_keras.weights"
@@ -97,7 +105,9 @@ model = PointClassifier(
                 dim_reduce_factor=args.dim_reduce_factor,
                 out_dim = y_tf.shape[-1],
                 enc_dropout = args.enc_dropout,
-                dec_dropout = args.dec_dropout
+                dec_dropout = args.dec_dropout,
+                feat_options=QBitOptions(args.enc_a, args.enc_b),
+                decoder_options=QBitOptions(args.dec_a, args.dec_b)
                 )
 epochs = range(args.epochs)
 
@@ -245,3 +255,5 @@ abs_diff = tf.concat(abs_diff, axis=0)
 
 ## plot and save
 plot_reg(diff=diff, dist=dist, total_val_loss=total_val_loss, abs_diff=abs_diff, save_name=save_name, args=args)
+# also upload the saved image to wandb
+wandb.log({"plot_reg": wandb.Image(save_name + "_hist.png")})
