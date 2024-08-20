@@ -43,7 +43,7 @@ sys_bits = SYS_BITS(x=8, k=8, b=16)
 NB_EPOCH = 2
 BATCH_SIZE = 64
 VALIDATION_SPLIT = 0.1
-TRAINING_EPOCHS = 30
+TRAINING_EPOCHS = 2
 
 pmtxyz = get_pmtxyz("/home/amigala/PointNET_PMT_keras/data/pmt_xyz.dat")
 data_npz = np.load('/home/amigala/PointNET_PMT_keras/data/train_X_y_ver_all_xyz_energy.npz')
@@ -89,7 +89,7 @@ class UserModel(XModel):
                 b_int_bits=0,
                 filters=64,
                 kernel_size=1,
-                act=XActivation(sys_bits=sys_bits, o_int_bits=0, type='relu', slope=0),),
+                act=XActivation(sys_bits=sys_bits, o_int_bits=0, type='relu'),),
             #core=XDense(
             #    k_int_bits=0,
             #    b_int_bits=0,
@@ -104,7 +104,7 @@ class UserModel(XModel):
                 b_int_bits=0,
                 filters=int(128/dim_reduce_factor),
                 kernel_size=1,
-                act=XActivation(sys_bits=sys_bits, o_int_bits=0, type='relu', slope=0),),
+                act=XActivation(sys_bits=sys_bits, o_int_bits=0, type='relu'),),
             #core=XDense(
             #    k_int_bits=0,
             #    b_int_bits=0,
@@ -118,13 +118,14 @@ class UserModel(XModel):
                 b_int_bits=0,
                 filters=int(1024 / dim_reduce_factor),
                 kernel_size=1,
-                act=XActivation(sys_bits=sys_bits, o_int_bits=0, type='relu', slope=0),),
+                act=XActivation(sys_bits=sys_bits, o_int_bits=0, type="relu")
+                ),
             pool=XPool(
                 type='avg',
                 pool_size=(2126,1),
                 strides=(2126,1),
                 padding='same',
-                act=XActivation(sys_bits=sys_bits, o_int_bits=0, type=None),),
+                act=XActivation(sys_bits=sys_bits, o_int_bits=0, type="relu"),),
             flatten=True
             #core=XDense(
             #    k_int_bits=0,
@@ -139,7 +140,8 @@ class UserModel(XModel):
                 k_int_bits=0,
                 b_int_bits=0,
                 units=int(512 / dim_reduce_factor),
-                act=XActivation(sys_bits=sys_bits, o_int_bits=0, type='relu', slope=0)),
+                act=XActivation(sys_bits=sys_bits, o_int_bits=0, type='relu')
+            )
         )
 
         self.b4 = XBundle( 
@@ -147,7 +149,8 @@ class UserModel(XModel):
                 k_int_bits=0,
                 b_int_bits=0,
                 units=int(128 / dim_reduce_factor),
-                act=XActivation(sys_bits=sys_bits, o_int_bits=0, type='relu', slope=0)),
+                act=XActivation(sys_bits=sys_bits, o_int_bits=0, type='relu')
+            )
         )
 
         self.b5 = XBundle(
@@ -155,7 +158,7 @@ class UserModel(XModel):
                 k_int_bits=0,
                 b_int_bits=0,
                 units=out_dim,
-                act=XActivation(sys_bits=sys_bits, o_int_bits=0, type='relu', slope=0.125)),
+                act=XActivation(sys_bits=sys_bits, o_int_bits=0, type='relu')),
             # flatten=True
         )
 
@@ -177,6 +180,31 @@ user_model = UserModel(sys_bits=sys_bits, x_int_bits=0)
 x = user_model(x_in)
 
 model = Model(inputs=[x_in], outputs=[x])
+
+'''
+Summarize model
+'''
+print(model.submodules)
+#print(y[:5], model(X_tf[:5]))
+for layer in model.submodules:
+    try:
+        print(layer.summary())
+        for w, weight in enumerate(layer.get_weights()):
+                print(layer.name, w, weight.shape)
+    except:
+        pass
+# print_qstats(model.layers[1])
+
+def summary_plus(layer, i=0):
+    if hasattr(layer, 'layers'):
+        if i != 0: 
+            layer.summary()
+        for l in layer.layers:
+            i += 1
+            summary_plus(l, i=i)
+
+print(summary_plus(model)) # OK 
+model.summary(expand_nested=True)
 
 
 # '''
@@ -380,29 +408,6 @@ parser.add_argument('--xyz_energy', action="store_true")
 args = parser.parse_args()
 
 plot_reg(diff=diff, dist=dist, total_val_loss=total_val_loss, abs_diff=abs_diff, save_name=save_name, args=args)
-
-
-print(model.submodules)
-#print(y[:5], model(X_tf[:5]))
-for layer in model.submodules:
-    try:
-        print(layer.summary())
-        for w, weight in enumerate(layer.get_weights()):
-                print(layer.name, w, weight.shape)
-    except:
-        pass
-# print_qstats(model.layers[1])
-
-def summary_plus(layer, i=0):
-    if hasattr(layer, 'layers'):
-        if i != 0: 
-            layer.summary()
-        for l in layer.layers:
-            i += 1
-            summary_plus(l, i=i)
-
-print(summary_plus(model)) # OK 
-model.summary(expand_nested=True)
 
 
 '''
