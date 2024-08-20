@@ -17,6 +17,12 @@ import tensorflow as tf
 from PointNet_merge import * # change this line for the one above for just pure keras
 from read_point_cloud import * 
 from utils import *
+import datetime
+
+# tensorboard
+log_dir = "/home/amigala/tflogs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+log_writer = tf.summary.create_file_writer(log_dir)
+# tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
 
 strt = time()
 parser = argparse.ArgumentParser()
@@ -30,7 +36,7 @@ parser.add_argument('--dec_dropout', type=float, default=0.2)
 parser.add_argument('--weight_decay', type=float, default=1e-2)
 parser.add_argument('--batch_size', type=int, default=64)
 parser.add_argument('--smaller_run', action="store_true")
-parser.add_argument('--dim_reduce_factor', type=float, default=1.5)
+parser.add_argument('--dim_reduce_factor', type=float, default=2)
 parser.add_argument('--debug', action="store_true")
 parser.add_argument('--save_ver', default=0)
 parser.add_argument('--mean_only', action="store_true")
@@ -117,18 +123,24 @@ optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr, beta_1=0.9, beta_2=0
 #model.compile(optimizer=optimizer, loss=tf.keras.losses.MeanSquaredError())
 model.compile(optimizer=optimizer)
 
+# log graph of model
+tb_callback = tf.keras.callbacks.TensorBoard(log_dir)
+tb_callback.set_model(model)
+print(model.summary())
+assert 0
+
 ## Train Loop
 
-wandb.login()
-run = wandb.init(
-    # Set the project where this run will be logged
-    project="pointnet-keras"
-    # Track hyperparameters and run metadata
-    # config={
-    #     "learning_rate": lr,
-    #     "epochs": epochs,
-    # }
-)
+# wandb.login()
+# run = wandb.init(
+#     # Set the project where this run will be logged
+#     project="pointnet-keras"
+#     # Track hyperparameters and run metadata
+#     # config={
+#     #     "learning_rate": lr,
+#     #     "epochs": epochs,
+#     # }
+# )
 # Initialize tqdm progress bar
 pbar = tqdm(total=args.epochs, mininterval=10)
 
@@ -164,9 +176,15 @@ for epoch in range(args.epochs):
     
     # Calculate average training loss for the epoch
     total_loss /= len(train_loader)
-    wandb.log({"loss":total_loss})
+    # wandb.log({"loss":total_loss})
     tot_train_lst.append(total_loss)
     pbar.update(1)
+    # with log_writer.as_default():
+    #     tf.summary.scalar(
+    #         'loss',
+    #         tf.keras.metrics.MSE('loss').result(),
+    #         step=epoch
+    #     )
     
     # Adjust learning rate based on training loss
     #prev_lr = optimizer.learning_rate.numpy()
