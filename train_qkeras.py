@@ -121,16 +121,16 @@ optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr, beta_1=0.9, beta_2=0
 model.compile(optimizer=optimizer)
 
 ## Train Loop
-wandb.login()
-run = wandb.init(
-    # Set the project where this run will be logged
-    project="pointnet-qkeras"
-    # Track hyperparameters and run metadata
-    # config={
-    #     "learning_rate": lr,
-    #     "epochs": epochs,
-    # }
-)
+# wandb.login()
+# run = wandb.init(
+#     # Set the project where this run will be logged
+#     project="pointnet-qkeras"
+#     # Track hyperparameters and run metadata
+#     # config={
+#     #     "learning_rate": lr,
+#     #     "epochs": epochs,
+#     # }
+# )
 
 # Initialize tqdm progress bar
 pbar = tqdm(total=args.epochs, mininterval=10)
@@ -146,6 +146,8 @@ for epoch in range(args.epochs):
     # Loop through batches in training loader
     for i, batch in enumerate(train_loader):
         X, y = batch
+        print(X.shape)
+        assert 0
         
         # Forward pass
         with tf.GradientTape() as tape:
@@ -167,7 +169,7 @@ for epoch in range(args.epochs):
     
     # Calculate average training loss for the epoch
     total_loss /= len(train_loader)
-    wandb.log({"Loss":total_loss})
+    # wandb.log({"Loss":total_loss})
     tot_train_lst.append(total_loss)
     pbar.update(1)
     
