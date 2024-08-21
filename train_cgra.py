@@ -24,6 +24,7 @@ from read_point_cloud import *
 from utils import *
 
 from deepsocflow import *
+from sklearn.preprocessing import MinMaxScaler
 
 
 (SIM, SIM_PATH) = ('xsim', "F:/Xilinx/Vivado/2022.2/bin/") if os.name=='nt' else ('verilator', '')
@@ -41,9 +42,9 @@ Define Model
 
 sys_bits = SYS_BITS(x=8, k=8, b=16)
 NB_EPOCH = 2
-BATCH_SIZE = 64
+BATCH_SIZE = 128
 VALIDATION_SPLIT = 0.1
-TRAINING_EPOCHS = 30
+TRAINING_EPOCHS = 20
 DEBUG = True
 
 pmtxyz = get_pmtxyz("/home/amigala/PointNET_PMT_keras/data/pmt_xyz.dat")
@@ -55,6 +56,32 @@ if DEBUG:
     X_tf, y_tf = X_tf[:small], y_tf[:small]
 
 new_X = preprocess_features(X_tf)
+
+# min/max scale the training data and the target data using their own scalers
+# training_scaler = MinMaxScaler((-1,1))
+# # print(new_X.shape)
+# original_shape = new_X.shape
+# new_X = new_X.numpy().reshape(new_X.shape[0], new_X.shape[1]*new_X.shape[2])
+# # print(new_X.shape)
+# # print(new_X)
+# new_X = training_scaler.fit_transform(new_X).reshape(original_shape)
+# new_X = tf.convert_to_tensor(new_X)
+
+# now scale the target
+target_scaler = MinMaxScaler((-1,1))
+# print(y_tf.shape)
+# y_tf_original_shape = y_tf.shape
+# y_tf = y_tf.numpy().reshape(y_tf.shape[0], y_tf.shape[1]*y_tf.shape[2])
+print(y_tf.shape)
+print(y_tf)
+y_tf = y_tf.numpy()
+y_tf[:,3] *= 160 # scale the energy by 160 before fitting
+print(tf.convert_to_tensor(y_tf))
+y_tf = target_scaler.fit_transform(y_tf)
+y_tf = tf.convert_to_tensor(y_tf)
+# print(y_tf)
+# assert 0
+
 train_split = 0.7
 val_split = 0.3
 train_idx = int(new_X.shape[0] * train_split)
@@ -170,19 +197,19 @@ class UserModel(XModel):
 
     def call (self, x):
         x = self.input_quant_layer(x)
-        print('input', x.shape)
+        # print('input', x.shape)
         x = self.b0(x)
-        print(x.shape)
+        # print(x.shape)
         x = self.b1(x)
-        print(x.shape)
+        # print(x.shape)
         x = self.b2(x)
-        print(x.shape)
+        # print(x.shape)
         x = tf.keras.backend.sum(x, axis=1) / 2126
-        print(x.shape)
+        # print(x.shape)
         x = self.b3(x)
-        print(x.shape)
+        # print(x.shape)
         x = self.b4(x)
-        print(x.shape)
+        # print(x.shape)
         x = self.b5(x)
         # print(f'Output from one pass: {x}')
         return x
@@ -278,21 +305,38 @@ for epoch in range(TRAINING_EPOCHS):
         # for some reason, this reshape can't always work (i'm guessing it's an issue at the
         # end of the data set where there is less than a batch's worth of data)
         
-        # Forward pass
+        # Forward 
+        index = 0
         with tf.GradientTape() as tape:
             # need to reshape data here to bypass training issues
             # print(X.shape)
             # assert 0
-            out = model(X)*300
+            out = model(X)
+            # print(out)
+            # print(out.shape)
             energy_mult = 160  # scale energy loss
             # Scale the last dimension of 'out' and 'y' tensors
-            out = tf.concat([out[:, :-1], energy_mult * tf.expand_dims(out[:, -1], axis=-1)], axis=-1)
-            y = tf.concat([y[:, :-1], energy_mult * tf.expand_dims(y[:, -1], axis=-1)], axis=-1)
+            # out = tf.convert_to_tensor(target_scaler.inverse_transform(out.numpy()))
+            # y = tf.convert_to_tensor(target_scaler.inverse_transform(y.numpy()))
+            # print(out.shape)
+            # print(y.shape)
+
+            # out = tf.concat([out[:, :-1], energy_mult * tf.expand_dims(out[:, -1], axis=-1)], axis=-1)
+            # y = tf.concat([y[:, :-1], energy_mult * tf.expand_dims(y[:, -1], axis=-1)], axis=-1)
             # print(f'Output from one pass: {out.numpy()}\n y_true: {y.numpy()}')
             # assert 0
+            # out = tf.convert_to_tensor(target_scaler.transform(out.numpy()))
+            # y = tf.convert_to_tensor(target_scaler.transform(y.numpy()))
 
             #out[:, -1], y[:, -1] = energy_mult * out[:, -1], energy_mult * y[:, -1]
             loss = tf.reduce_mean(tf.keras.losses.MSE(out, y))
+            if index % 100 == 0:
+                out = tf.convert_to_tensor(target_scaler.inverse_transform(out.numpy()))
+                y = tf.convert_to_tensor(target_scaler.inverse_transform(y.numpy()))
+                # print(out)
+                # print(y)
+            # print(type(loss))
+            # assert 0
         
         # Calculate gradients and update weights
         gradients = tape.gradient(loss, model.trainable_variables)
@@ -361,7 +405,7 @@ abs_diff = []
 #    model.train()
 #else:
 print('Model eval')
-scale_factor = 25.
+scale_factor = 1#25.
 with tqdm(total=len(val_loader), mininterval=5) as pbar:
     total_val_loss = 0
 
@@ -372,7 +416,18 @@ with tqdm(total=len(val_loader), mininterval=5) as pbar:
         # except ValueError:
         #     print("skipping batch due to incompatible size")
         #     break
-        out = model(X)*300
+        out = model(X)
+        # do inverse transform on data
+        # new_shape = out.shape
+        # print(X.shape)
+        # print(out.shape)
+        # print(y.shape)
+        out = tf.convert_to_tensor(target_scaler.inverse_transform(out))
+        y = tf.convert_to_tensor(target_scaler.inverse_transform(y))
+        # print(out)
+        # print(y)
+        # assert 0
+
         abs_diff.append(tf.abs(y*scale_factor - out*scale_factor))
         val_loss = tf.reduce_mean(tf.keras.losses.MSE(out, y))
         total_val_loss += val_loss.numpy()
