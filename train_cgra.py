@@ -44,9 +44,9 @@ sys_bits = SYS_BITS(x=8, k=8, b=16)
 NB_EPOCH = 2
 BATCH_SIZE = 128
 VALIDATION_SPLIT = 0.1
-TRAINING_EPOCHS = 1
+TRAINING_EPOCHS = 10
 DEBUG = True
-training = False
+training = True
 
 pmtxyz = get_pmtxyz("/home/amigala/PointNET_PMT_keras/data/pmt_xyz.dat")
 data_npz = np.load('/home/amigala/PointNET_PMT_keras/data/train_X_y_ver_all_xyz_energy.npz')
@@ -133,39 +133,39 @@ class UserModel(XModel):
         )
         
         self.b1 = XBundle( 
-            # core=XConvBN(
-            #     k_int_bits=0,
-            #     b_int_bits=0,
-            #     filters=int(128/dim_reduce_factor),
-            #     kernel_size=1,
-            #     act=XActivation(sys_bits=sys_bits, o_int_bits=0, type='relu', slope=0),),
-            core=XDense(
-               k_int_bits=0,
-               b_int_bits=0,
-               units=int(128/dim_reduce_factor),
-               act=XActivation(sys_bits=sys_bits, o_int_bits=0, type='relu', slope=0)),
+            core=XConvBN(
+                k_int_bits=0,
+                b_int_bits=0,
+                filters=int(128/dim_reduce_factor),
+                kernel_size=1,
+                act=XActivation(sys_bits=sys_bits, o_int_bits=0, type='relu', slope=0),),
+            # core=XDense(
+            #    k_int_bits=0,
+            #    b_int_bits=0,
+            #    units=int(128/dim_reduce_factor),
+            #    act=XActivation(sys_bits=sys_bits, o_int_bits=0, type='relu', slope=0)),
         )
         
         self.b2 = XBundle( 
-            # core=XConvBN(
-            #     k_int_bits=0,
-            #     b_int_bits=0,
-            #     filters=int(1024 / dim_reduce_factor),
-            #     kernel_size=1,
-            #     act=XActivation(sys_bits=sys_bits, o_int_bits=0, type="relu", slope=1)
-            #     ),
-            # pool=XPool(
-            #     type='avg',
-            #     pool_size=(2126,1),
-            #     strides=(2126,1),
-            #     padding='same',
-            #     act=XActivation(sys_bits=sys_bits, o_int_bits=0, type="relu", slope=1),),
-            # flatten=True
-            core=XDense(
-               k_int_bits=0,
-               b_int_bits=0,
-               units=int(1024/dim_reduce_factor),
-               act=XActivation(sys_bits=sys_bits, o_int_bits=0, type=None)),
+            core=XConvBN(
+                k_int_bits=0,
+                b_int_bits=0,
+                filters=int(1024 / dim_reduce_factor),
+                kernel_size=1,
+                act=XActivation(sys_bits=sys_bits, o_int_bits=0, type=None)
+                ),
+            pool=XPool(
+                type='avg',
+                pool_size=(2126,1),
+                strides=(2126,1),
+                padding='same',
+                act=XActivation(sys_bits=sys_bits, o_int_bits=0, type="relu", slope=1),),
+            flatten=True
+            # core=XDense(
+            #    k_int_bits=0,
+            #    b_int_bits=0,
+            #    units=int(1024/dim_reduce_factor),
+            #    act=XActivation(sys_bits=sys_bits, o_int_bits=0, type=None)),
         )
 
         self.b3 = XBundle( 
@@ -176,7 +176,7 @@ class UserModel(XModel):
                 # units = out_dim,
                 act=XActivation(sys_bits=sys_bits, o_int_bits=0, type='relu', slope=0.125)
             ),
-            flatten=True
+            # flatten=True
         )
 
         self.b4 = XBundle( 
@@ -193,7 +193,7 @@ class UserModel(XModel):
                 k_int_bits=0,
                 b_int_bits=0,
                 units=out_dim,
-                act=XActivation(sys_bits=SYS_BITS(x=32, k=32, b=32), o_int_bits=0, type=None)),
+                act=XActivation(sys_bits=sys_bits, o_int_bits=0, type=None)),
             # flatten=True
         )
 
@@ -206,7 +206,7 @@ class UserModel(XModel):
         # print(x.shape)
         x = self.b2(x)
         # print(x.shape)
-        x = tf.keras.backend.sum(x, axis=1) / 2126
+        # x = tf.keras.backend.sum(x, axis=1) / 2126
         # print(x.shape)
         x = self.b3(x)
         # print(x.shape)
@@ -300,11 +300,11 @@ if training:
         # Loop through batches in training loader
         for i, batch in enumerate(train_loader):
             X, y = batch
-            # try:
-            #     X = tf.convert_to_tensor(X.numpy().reshape((BATCH_SIZE, 2126, 1, 6)))
-            # except ValueError:
-            #     print("skipping batch due to incompatible size")
-            #     break
+            try:
+                X = tf.convert_to_tensor(X.numpy().reshape((BATCH_SIZE, 2126, 1, 6)))
+            except ValueError:
+                print("skipping batch due to incompatible size")
+                break
             # for some reason, this reshape can't always work (i'm guessing it's an issue at the
             # end of the data set where there is less than a batch's worth of data)
             
@@ -414,11 +414,11 @@ if training:
 
         for i, batch in enumerate(val_loader):
             X, y = batch
-            # try:
-            #     X = tf.convert_to_tensor(X.numpy().reshape((BATCH_SIZE, 2126, 1, 6)))
-            # except ValueError:
-            #     print("skipping batch due to incompatible size")
-            #     break
+            try:
+                X = tf.convert_to_tensor(X.numpy().reshape((BATCH_SIZE, 2126, 1, 6)))
+            except ValueError:
+                print("skipping batch due to incompatible size")
+                break
             out = model(X)
             # do inverse transform on data
             # new_shape = out.shape
