@@ -3,6 +3,7 @@ import pytest
 import itertools
 import sys
 sys.path.append("../../")
+sys.path.append("../")
 from tensorflow import keras
 from keras.layers import Input
 from keras.models import Model, save_model
@@ -44,7 +45,7 @@ sys_bits = SYS_BITS(x=8, k=8, b=16)
 NB_EPOCH = 2
 BATCH_SIZE = 128
 VALIDATION_SPLIT = 0.1
-TRAINING_EPOCHS = 10
+TRAINING_EPOCHS = 30
 DEBUG = True
 training = True
 
