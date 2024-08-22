@@ -44,8 +44,9 @@ sys_bits = SYS_BITS(x=8, k=8, b=16)
 NB_EPOCH = 2
 BATCH_SIZE = 128
 VALIDATION_SPLIT = 0.1
-TRAINING_EPOCHS = 30
-DEBUG = False
+TRAINING_EPOCHS = 1
+DEBUG = True
+training = False
 
 pmtxyz = get_pmtxyz("/home/amigala/PointNET_PMT_keras/data/pmt_xyz.dat")
 data_npz = np.load('/home/amigala/PointNET_PMT_keras/data/train_X_y_ver_all_xyz_energy.npz')
@@ -116,19 +117,20 @@ class UserModel(XModel):
         super().__init__(sys_bits, x_int_bits, *args, **kwargs)
 
         self.b0 = XBundle( 
-            # core=XConvBN(
-            #     k_int_bits=0,
-            #     b_int_bits=0,
-            #     filters=64,
-            #     kernel_size=1,
-            #     act=XActivation(sys_bits=sys_bits, o_int_bits=0, type='relu', slope=0)),
-            core=XDense(
-               k_int_bits=0,
-               b_int_bits=0,
-               units=64,
-               act=XActivation(sys_bits=sys_bits, o_int_bits=0, type='relu', slope=0)
-               ),
-            )
+            # core=XDense(
+            #    k_int_bits=0,
+            #    b_int_bits=0,
+            #    units=64,
+            #    act=XActivation(sys_bits=sys_bits, o_int_bits=0, type='relu', slope=0)
+            # )
+            core=XConvBN(
+                k_int_bits=0,
+                b_int_bits=0,
+                filters=64,
+                kernel_size=1,
+                act=XActivation(sys_bits=sys_bits, o_int_bits=0, type='relu', slope=0)
+            ),
+        )
         
         self.b1 = XBundle( 
             # core=XConvBN(
@@ -217,7 +219,7 @@ class UserModel(XModel):
 input_shape = X_tf.shape[1:]
 # (pmtxyz.shape[0], tf.shape(new_X)[2])
 # (pmtxyz.shape[0], 1, tf.shape(new_X)[2])
-x = x_in =  Input((pmtxyz.shape[0], tf.shape(new_X)[2]), name="input")
+x = x_in =  Input((pmtxyz.shape[0], 1, tf.shape(new_X)[2]), name="input")
 user_model = UserModel(sys_bits=sys_bits, x_int_bits=0)
 x = user_model(x_in)
 
@@ -270,7 +272,7 @@ Train
 optimizer = tf.keras.optimizers.Adam(learning_rate=1e-3, beta_1=0.9, beta_2=0.999, epsilon=1e-07, amsgrad=False)
 epochs = range(TRAINING_EPOCHS)
 #model.compile(optimizer=optimizer, loss=tf.keras.losses.MeanSquaredError())
-model.compile(optimizer=optimizer)
+model.compile(optimizer=optimizer, loss='mse', metrics=['mse'])
 
 ## Train Loop
 # wandb.login()
@@ -285,209 +287,298 @@ model.compile(optimizer=optimizer)
 # )
 
 # Initialize tqdm progress bar
-pbar = tqdm(total=TRAINING_EPOCHS, mininterval=10)
-# Initialize best validation loss and best train loss
-best_val, best_train = float("inf"), float("inf")
-tot_train_lst = []
+if training:
+    pbar = tqdm(total=TRAINING_EPOCHS, mininterval=10)
+    # Initialize best validation loss and best train loss
+    best_val, best_train = float("inf"), float("inf")
+    tot_train_lst = []
 
-# Loop through epochs
-for epoch in range(TRAINING_EPOCHS):
-    total_loss = 0
-    
-    # Loop through batches in training loader
-    for i, batch in enumerate(train_loader):
-        X, y = batch
-        # try:
-        #     X = tf.convert_to_tensor(X.numpy().reshape((BATCH_SIZE, 2126, 1, 6)))
-        # except ValueError:
-        #     print("skipping batch due to incompatible size")
-        #     break
-        # for some reason, this reshape can't always work (i'm guessing it's an issue at the
-        # end of the data set where there is less than a batch's worth of data)
+    # Loop through epochs
+    for epoch in range(TRAINING_EPOCHS):
+        total_loss = 0
         
-        # Forward 
-        index = 0
-        with tf.GradientTape() as tape:
-            # need to reshape data here to bypass training issues
-            # print(X.shape)
-            # assert 0
-            out = model(X)
-            # print(out)
-            # print(out.shape)
-            energy_mult = 160  # scale energy loss
-            # Scale the last dimension of 'out' and 'y' tensors
-            # out = tf.convert_to_tensor(target_scaler.inverse_transform(out.numpy()))
-            # y = tf.convert_to_tensor(target_scaler.inverse_transform(y.numpy()))
-            # # print(out.shape)
-            # # print(y.shape)
-
-            # out = tf.concat([out[:, :-1], energy_mult * tf.expand_dims(out[:, -1], axis=-1)], axis=-1)
-            # y = tf.concat([y[:, :-1], energy_mult * tf.expand_dims(y[:, -1], axis=-1)], axis=-1)
-            # # print(f'Output from one pass: {out.numpy()}\n y_true: {y.numpy()}')
-            # # assert 0
-            # out = tf.convert_to_tensor(target_scaler.transform(out.numpy()))
-            # y = tf.convert_to_tensor(target_scaler.transform(y.numpy()))
-
-            #out[:, -1], y[:, -1] = energy_mult * out[:, -1], energy_mult * y[:, -1]
-            loss = tf.reduce_mean(tf.keras.losses.MSE(out, y))
-            if index % 100 == 0:
-                out = tf.convert_to_tensor(target_scaler.inverse_transform(out.numpy()))
-                y = tf.convert_to_tensor(target_scaler.inverse_transform(y.numpy()))
+        # Loop through batches in training loader
+        for i, batch in enumerate(train_loader):
+            X, y = batch
+            # try:
+            #     X = tf.convert_to_tensor(X.numpy().reshape((BATCH_SIZE, 2126, 1, 6)))
+            # except ValueError:
+            #     print("skipping batch due to incompatible size")
+            #     break
+            # for some reason, this reshape can't always work (i'm guessing it's an issue at the
+            # end of the data set where there is less than a batch's worth of data)
+            
+            # Forward 
+            index = 0
+            with tf.GradientTape() as tape:
+                # need to reshape data here to bypass training issues
+                # print(X.shape)
+                # assert 0
+                out = model(X)
                 # print(out)
-                # print(y)
-            # print(type(loss))
+                # print(out.shape)
+                energy_mult = 160  # scale energy loss
+                # Scale the last dimension of 'out' and 'y' tensors
+                # out = tf.convert_to_tensor(target_scaler.inverse_transform(out.numpy()))
+                # y = tf.convert_to_tensor(target_scaler.inverse_transform(y.numpy()))
+                # # print(out.shape)
+                # # print(y.shape)
+
+                # out = tf.concat([out[:, :-1], energy_mult * tf.expand_dims(out[:, -1], axis=-1)], axis=-1)
+                # y = tf.concat([y[:, :-1], energy_mult * tf.expand_dims(y[:, -1], axis=-1)], axis=-1)
+                # # print(f'Output from one pass: {out.numpy()}\n y_true: {y.numpy()}')
+                # # assert 0
+                # out = tf.convert_to_tensor(target_scaler.transform(out.numpy()))
+                # y = tf.convert_to_tensor(target_scaler.transform(y.numpy()))
+
+                #out[:, -1], y[:, -1] = energy_mult * out[:, -1], energy_mult * y[:, -1]
+                loss = tf.reduce_mean(tf.keras.losses.MSE(out, y))
+                if index % 100 == 0:
+                    out = tf.convert_to_tensor(target_scaler.inverse_transform(out.numpy()))
+                    y = tf.convert_to_tensor(target_scaler.inverse_transform(y.numpy()))
+                    # print(out)
+                    # print(y)
+                # print(type(loss))
+                # assert 0
+            
+            # Calculate gradients and update weights
+            gradients = tape.gradient(loss, model.trainable_variables)
+            optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+            
+            # Log loss
+            total_loss += loss.numpy()
+        
+        # Calculate average training loss for the epoch
+        total_loss /= len(train_loader)
+        # wandb.log({"Loss":total_loss})
+        tot_train_lst.append(total_loss)
+        pbar.update(1)
+        print(total_loss)
+        
+        # Adjust learning rate based on training loss
+        #prev_lr = optimizer.learning_rate.numpy()
+        #reduce_lr.on_epoch_end(epoch, logs={'loss': total_loss})
+        #scheduler.step(total_loss)
+        
+        # Validation every 10 epochs or last epoch
+        # if epoch == TRAINING_EPOCHS - 1:
+        #     total_val_loss = 0
+            
+        #     # Validation (evaluation mode)
+        #     for batch in val_loader:
+        #         X, y = batch
+        #         out = model(X)
+        #         val_loss = tf.reduce_mean(tf.keras.losses.MSE(out, y))
+        #         total_val_loss += val_loss.numpy()
+            
+        #     # Calculate average validation loss
+        #     total_val_loss /= len(val_loader)
+            
+        #     # Update progress bar
+        #     # pbar.update(10)
+            
+        #     # Save best model based on validation loss
+        #     if total_val_loss < best_val:
+        #         best_val = total_val_loss
+        #         if args.save_best:
+        #             model.save(save_name + ".keras")
+        
+        # Log training loss
+        # else:
+            # print(total_loss)
+        
+    # Close progress bar
+    pbar.close()
+
+    ## time
+    # tot_time = time() - strt
+
+    ## min values
+    min_train = round(min(tot_train_lst), 2)
+    min_values = {
+            "min_train": min_train,
+            "min_val": best_val,
+    }
+
+    diff = {"x":[], "y":[], "z":[], "radius": [], "unif_r":[], "energy":[]}
+    dist = {"x":[], "y":[], "z":[], "x_pred":[], "y_pred":[], "z_pred":[], "energy":[], "energy_pred":[],
+            "radius": [], "radius_pred": [], "unif_r": [], "unif_r_pred": []}
+    abs_diff = []
+    #if args.train_mode:
+    #    model.train()
+    #else:
+    print('Model eval')
+    scale_factor = 1#25.
+    with tqdm(total=len(val_loader), mininterval=5) as pbar:
+        total_val_loss = 0
+
+        for i, batch in enumerate(val_loader):
+            X, y = batch
+            # try:
+            #     X = tf.convert_to_tensor(X.numpy().reshape((BATCH_SIZE, 2126, 1, 6)))
+            # except ValueError:
+            #     print("skipping batch due to incompatible size")
+            #     break
+            out = model(X)
+            # do inverse transform on data
+            # new_shape = out.shape
+            # print(X.shape)
+            # print(out.shape)
+            # print(y.shape)
+            out = tf.convert_to_tensor(target_scaler.inverse_transform(out))
+            y = tf.convert_to_tensor(target_scaler.inverse_transform(y))
+            print(out)
+            print(y)
             # assert 0
-        
-        # Calculate gradients and update weights
-        gradients = tape.gradient(loss, model.trainable_variables)
-        optimizer.apply_gradients(zip(gradients, model.trainable_variables))
-        
-        # Log loss
-        total_loss += loss.numpy()
-    
-    # Calculate average training loss for the epoch
-    total_loss /= len(train_loader)
-    # wandb.log({"Loss":total_loss})
-    tot_train_lst.append(total_loss)
-    pbar.update(1)
-    print(total_loss)
-    
-    # Adjust learning rate based on training loss
-    #prev_lr = optimizer.learning_rate.numpy()
-    #reduce_lr.on_epoch_end(epoch, logs={'loss': total_loss})
-    #scheduler.step(total_loss)
-    
-    # Validation every 10 epochs or last epoch
-    # if epoch == TRAINING_EPOCHS - 1:
-    #     total_val_loss = 0
-        
-    #     # Validation (evaluation mode)
-    #     for batch in val_loader:
-    #         X, y = batch
-    #         out = model(X)
-    #         val_loss = tf.reduce_mean(tf.keras.losses.MSE(out, y))
-    #         total_val_loss += val_loss.numpy()
-        
-    #     # Calculate average validation loss
-    #     total_val_loss /= len(val_loader)
-        
-    #     # Update progress bar
-    #     # pbar.update(10)
-        
-    #     # Save best model based on validation loss
-    #     if total_val_loss < best_val:
-    #         best_val = total_val_loss
-    #         if args.save_best:
-    #             model.save(save_name + ".keras")
-    
-    # Log training loss
+
+            abs_diff.append(tf.abs(y*scale_factor - out*scale_factor))
+            val_loss = tf.reduce_mean(tf.keras.losses.MSE(out, y))
+            total_val_loss += val_loss.numpy()
+
+            diff_tensor = (y - out)*scale_factor ## to vis. distribution
+            dist["x"].append(y[:, 0]*scale_factor)
+            dist["y"].append(y[:, 1]*scale_factor)
+            dist["z"].append(y[:, 2]*scale_factor)
+
+            dist["x_pred"].append(out[:, 0]*scale_factor)
+            dist["y_pred"].append(out[:, 1]*scale_factor)
+            dist["z_pred"].append(out[:, 2]*scale_factor)
+            
+            diff["x"].append(diff_tensor[:, 0])
+            diff["y"].append(diff_tensor[:, 1])
+            diff["z"].append(diff_tensor[:, 2])
+
+            dist["energy"].append(y[:, 3]*scale_factor)
+            dist["energy_pred"].append(out[:, 3]*scale_factor)
+            diff["energy"].append(diff_tensor[:, 3])
+
+            pbar.update()
+        total_val_loss /= len(val_loader)
+
+    abs_diff = tf.concat(abs_diff, axis=0)
+
+    ## plot and save
+    save_name = f'./cgra_pointNET_last'
+    # import argparse
+    # parser = argparse.ArgumentParser()
+    # ## Hyperparameters
+    # parser.add_argument('--epochs', type=int, default=10)
+    # parser.add_argument('--lr', type=float, default=1e-3)
+    # parser.add_argument('--use_wandb', action="store_true")
+    # parser.add_argument('--reduce_lr_wait', type=int, default=20)
+    # parser.add_argument('--enc_dropout', type=float, default=0.2)
+    # parser.add_argument('--dec_dropout', type=float, default=0.2)
+    # parser.add_argument('--weight_decay', type=float, default=1e-2)
+    # parser.add_argument('--batch_size', type=int, default=64)
+    # parser.add_argument('--smaller_run', action="store_true")
+    # parser.add_argument('--dim_reduce_factor', type=float, default=1.5)
+    # parser.add_argument('--debug', action="store_true")
+    # parser.add_argument('--save_ver', default=0)
+    # parser.add_argument('--mean_only', action="store_true")
+    # parser.add_argument('--save_best', action="store_true")
+    # parser.add_argument('--seed', type=int, default=999)
+    # parser.add_argument('--patience', type=int, default=15)
+    # parser.add_argument('--xyz_label', action="store_true")
+    # parser.add_argument('--xyz_energy', action="store_true")
+    # args = parser.parse_args()
+
+    # plot_reg(diff=diff, dist=dist, total_val_loss=total_val_loss, abs_diff=abs_diff, save_name=save_name, args=args)
+    # if args.xyz_energy:
+    abs_x_diff, abs_y_diff, abs_z_diff, abs_energy_diff = tf.reduce_mean(abs_diff, axis=0)
+    energy_diff = tf.concat(diff["energy"], axis=0).cpu()
+    energy_pred = tf.concat(dist["energy_pred"], axis=0).cpu()
+    energy = tf.concat(dist["energy"], axis=0).cpu()
     # else:
-        # print(total_loss)
-    
-# Close progress bar
-pbar.close()
+    #     abs_x_diff, abs_y_diff, abs_z_diff = tf.reduce_mean(abs_diff, axis=0)
 
-## time
-# tot_time = time() - strt
+    x_diff = tf.concat(diff["x"], axis=0).cpu()
+    y_diff = tf.concat(diff["y"], axis=0).cpu()
+    z_diff = tf.concat(diff["z"], axis=0).cpu()
 
-## min values
-min_train = round(min(tot_train_lst), 2)
-min_values = {
-        "min_train": min_train,
-        "min_val": best_val,
-}
+    x_pred = tf.concat(dist["x_pred"], axis=0).cpu()
+    y_pred = tf.concat(dist["y_pred"], axis=0).cpu()
+    z_pred = tf.concat(dist["z_pred"], axis=0).cpu()
 
-diff = {"x":[], "y":[], "z":[], "radius": [], "unif_r":[], "energy":[]}
-dist = {"x":[], "y":[], "z":[], "x_pred":[], "y_pred":[], "z_pred":[], "energy":[], "energy_pred":[],
-         "radius": [], "radius_pred": [], "unif_r": [], "unif_r_pred": []}
-abs_diff = []
-#if args.train_mode:
-#    model.train()
-#else:
-print('Model eval')
-scale_factor = 1#25.
-with tqdm(total=len(val_loader), mininterval=5) as pbar:
-    total_val_loss = 0
+    x = tf.concat(dist["x"], axis=0).cpu()
+    y = tf.concat(dist["y"], axis=0).cpu()
+    z = tf.concat(dist["z"], axis=0).cpu()
 
-    for i, batch in enumerate(val_loader):
-        X, y = batch
-        # try:
-        #     X = tf.convert_to_tensor(X.numpy().reshape((BATCH_SIZE, 2126, 1, 6)))
-        # except ValueError:
-        #     print("skipping batch due to incompatible size")
-        #     break
-        out = model(X)
-        # do inverse transform on data
-        # new_shape = out.shape
-        # print(X.shape)
-        # print(out.shape)
-        # print(y.shape)
-        out = tf.convert_to_tensor(target_scaler.inverse_transform(out))
-        y = tf.convert_to_tensor(target_scaler.inverse_transform(y))
-        print(out)
-        print(y)
-        # assert 0
+    plt.close()
+    fig, axes = plt.subplots(nrows=2, ncols=4, figsize=(20, 10))
+    fig.suptitle(f"Val. MSE: {total_val_loss:.2f} (MSE(x) + MSE(y) + MSE(y) + MSE(energy))\n\
+    Avg. abs. diff. in x={abs_x_diff:.2f}, y={abs_y_diff:.2f}, z={abs_z_diff:.2f}, energy={abs_energy_diff:.2f}")
+    # else:
+    #     fig, axes = plt.subplots(nrows=2, ncols=3, figsize=(20, 10))
+    #     fig.suptitle(f"Val. MSE: {total_val_loss:.2f} (MSE(x) + MSE(y) + MSE(y))\n\
+    #     Avg. abs. diff. in x={abs_x_diff:.2f}, y={abs_y_diff:.2f}, z={abs_z_diff:.2f}")
 
-        abs_diff.append(tf.abs(y*scale_factor - out*scale_factor))
-        val_loss = tf.reduce_mean(tf.keras.losses.MSE(out, y))
-        total_val_loss += val_loss.numpy()
+    ## diff. plots
+    x_diff_range = (-50, 50)
+    axes[0,0].hist(x_diff, bins=20, range=x_diff_range, edgecolor='black')
+    axes[0,0].set_title(r"x_diff ($x - \hat{x}$)")
+    axes[0,0].set_xlabel('x diff')
+    axes[0,0].set_ylabel('freq')
 
-        diff_tensor = (y - out)*scale_factor ## to vis. distribution
-        dist["x"].append(y[:, 0]*scale_factor)
-        dist["y"].append(y[:, 1]*scale_factor)
-        dist["z"].append(y[:, 2]*scale_factor)
+    y_diff_range = (-50, 50)
+    axes[0,1].hist(y_diff, bins=20, range=y_diff_range, edgecolor='black')
+    axes[0,1].set_title(r"y_diff ($y - \hat{y}$)")
+    axes[0,1].set_xlabel('y diff')
+    axes[0,1].set_ylabel('freq')
 
-        dist["x_pred"].append(out[:, 0]*scale_factor)
-        dist["y_pred"].append(out[:, 1]*scale_factor)
-        dist["z_pred"].append(out[:, 2]*scale_factor)
-        
-        diff["x"].append(diff_tensor[:, 0])
-        diff["y"].append(diff_tensor[:, 1])
-        diff["z"].append(diff_tensor[:, 2])
+    z_diff_range = (-50, 50)
+    axes[0,2].hist(z_diff, bins=20, range=z_diff_range, edgecolor='black')
+    axes[0,2].set_title(r"z_diff ($z - \hat{z}$)")
+    axes[0,2].set_xlabel('z diff')
+    axes[0,2].set_ylabel('freq')
 
-        dist["energy"].append(y[:, 3]*scale_factor)
-        dist["energy_pred"].append(out[:, 3]*scale_factor)
-        diff["energy"].append(diff_tensor[:, 3])
+    energy_diff_range = (0, 1)
+    axes[0,3].hist(energy_diff, bins=20, range=energy_diff_range, edgecolor='black')
+    axes[0,3].set_title(r"energy_diff ($energy - \hat{energy}$)")
+    axes[0,3].set_xlabel('energy diff')
+    axes[0,3].set_ylabel('freq')
 
-        pbar.update()
-    total_val_loss /= len(val_loader)
+    ## dist. plots
+    x_range = (-250, 250)
+    axes[1,0].hist(x, bins=20, range=x_range, edgecolor='black', label="x")
+    axes[1,0].hist(x_pred, bins=20, range=x_range, edgecolor='blue', label=r'$\hat{x}$', alpha=0.5)
+    axes[1,0].set_title("x dist")
+    axes[1,0].set_xlabel('x')
+    axes[1,0].set_ylabel('freq')
 
-abs_diff = tf.concat(abs_diff, axis=0)
+    y_range = (-250, 250)
+    axes[1,1].hist(y, bins=20, range=y_range, edgecolor='black', label="y")
+    axes[1,1].hist(y_pred, bins=20, range=y_range, edgecolor='blue', label=r'$\hat{y}$', alpha=0.5)
+    axes[1,1].set_title("y dist")
+    axes[1,1].set_xlabel('y')
+    axes[1,1].set_ylabel('freq')
 
-## plot and save
-save_name = f'./cgra_pointNET_last'
-import argparse
-parser = argparse.ArgumentParser()
-## Hyperparameters
-parser.add_argument('--epochs', type=int, default=10)
-parser.add_argument('--lr', type=float, default=1e-3)
-parser.add_argument('--use_wandb', action="store_true")
-parser.add_argument('--reduce_lr_wait', type=int, default=20)
-parser.add_argument('--enc_dropout', type=float, default=0.2)
-parser.add_argument('--dec_dropout', type=float, default=0.2)
-parser.add_argument('--weight_decay', type=float, default=1e-2)
-parser.add_argument('--batch_size', type=int, default=64)
-parser.add_argument('--smaller_run', action="store_true")
-parser.add_argument('--dim_reduce_factor', type=float, default=1.5)
-parser.add_argument('--debug', action="store_true")
-parser.add_argument('--save_ver', default=0)
-parser.add_argument('--mean_only', action="store_true")
-parser.add_argument('--save_best', action="store_true")
-parser.add_argument('--seed', type=int, default=999)
-parser.add_argument('--patience', type=int, default=15)
-parser.add_argument('--xyz_label', action="store_true")
-parser.add_argument('--xyz_energy', action="store_true")
-args = parser.parse_args()
+    z_range = (-250, 250)
+    axes[1,2].hist(x, bins=20, range=x_range, edgecolor='black', label="z")
+    axes[1,2].hist(x_pred, bins=20, range=x_range, edgecolor='blue', label=r'$\hat{z}$', alpha=0.5)
+    axes[1,2].set_title("z dist")
+    axes[1,2].set_xlabel(r'z')
+    axes[1,2].set_ylabel('freq')
 
-plot_reg(diff=diff, dist=dist, total_val_loss=total_val_loss, abs_diff=abs_diff, save_name=save_name, args=args)
+    energy_range = (0, 4)
+    axes[1,3].hist(energy, bins=20, range=energy_range, edgecolor='black', label="label")
+    axes[1,3].hist(energy_pred, bins=20, range=energy_range, edgecolor='blue', label="pred", alpha=0.5)
+    axes[1,3].set_title(r"energy_diff ($energy - \hat{energy}$)")
+    axes[1,3].set_xlabel('energy diff')
+    axes[1,3].set_ylabel('freq')
 
+    axes[1, 0].legend()
+    axes[1, 1].legend()
+    axes[1, 2].legend()
+
+    plt.savefig(save_name + "_hist.png")
+    plt.close()
 
 '''
 Save & Reload
 '''
 
-save_model(model, "mnist.h5")
-loaded_model = load_qmodel("mnist.h5")
+# save_model(model, "mnist.h5")
+# loaded_model = load_qmodel("mnist.h5")
 
 #score = loaded_model.evaluate(test_loader, verbose=0)
 #print(f"Test loss:{score[0]}, Test accuracy:{score[1]}")
@@ -535,7 +626,7 @@ def test_dnn_engine(PARAMS):
     '''
     VERIFY & EXPORT
     '''
-    export_inference(loaded_model, hw, hw.ROWS)
+    export_inference(model, hw, hw.ROWS)
     # verify_inference(loaded_model, hw, SIM=SIM, SIM_PATH=SIM_PATH)
 
     # d_perf = predict_model_performance(hw)
