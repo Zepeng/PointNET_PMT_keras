@@ -44,8 +44,8 @@ sys_bits = SYS_BITS(x=8, k=8, b=16)
 NB_EPOCH = 2
 BATCH_SIZE = 128
 VALIDATION_SPLIT = 0.1
-TRAINING_EPOCHS = 20
-DEBUG = True
+TRAINING_EPOCHS = 30
+DEBUG = False
 
 pmtxyz = get_pmtxyz("/home/amigala/PointNET_PMT_keras/data/pmt_xyz.dat")
 data_npz = np.load('/home/amigala/PointNET_PMT_keras/data/train_X_y_ver_all_xyz_energy.npz')
@@ -74,9 +74,9 @@ target_scaler = MinMaxScaler((-1,1))
 # y_tf = y_tf.numpy().reshape(y_tf.shape[0], y_tf.shape[1]*y_tf.shape[2])
 print(y_tf.shape)
 print(y_tf)
-y_tf = y_tf.numpy()
-y_tf[:,3] *= 160 # scale the energy by 160 before fitting
-print(tf.convert_to_tensor(y_tf))
+# y_tf = y_tf.numpy()
+# y_tf[:,3] *= 160 # scale the energy by 160 before fitting
+# print(tf.convert_to_tensor(y_tf))
 y_tf = target_scaler.fit_transform(y_tf)
 y_tf = tf.convert_to_tensor(y_tf)
 # print(y_tf)
@@ -318,13 +318,13 @@ for epoch in range(TRAINING_EPOCHS):
             # Scale the last dimension of 'out' and 'y' tensors
             # out = tf.convert_to_tensor(target_scaler.inverse_transform(out.numpy()))
             # y = tf.convert_to_tensor(target_scaler.inverse_transform(y.numpy()))
-            # print(out.shape)
-            # print(y.shape)
+            # # print(out.shape)
+            # # print(y.shape)
 
             # out = tf.concat([out[:, :-1], energy_mult * tf.expand_dims(out[:, -1], axis=-1)], axis=-1)
             # y = tf.concat([y[:, :-1], energy_mult * tf.expand_dims(y[:, -1], axis=-1)], axis=-1)
-            # print(f'Output from one pass: {out.numpy()}\n y_true: {y.numpy()}')
-            # assert 0
+            # # print(f'Output from one pass: {out.numpy()}\n y_true: {y.numpy()}')
+            # # assert 0
             # out = tf.convert_to_tensor(target_scaler.transform(out.numpy()))
             # y = tf.convert_to_tensor(target_scaler.transform(y.numpy()))
 
@@ -424,8 +424,8 @@ with tqdm(total=len(val_loader), mininterval=5) as pbar:
         # print(y.shape)
         out = tf.convert_to_tensor(target_scaler.inverse_transform(out))
         y = tf.convert_to_tensor(target_scaler.inverse_transform(y))
-        # print(out)
-        # print(y)
+        print(out)
+        print(y)
         # assert 0
 
         abs_diff.append(tf.abs(y*scale_factor - out*scale_factor))
@@ -486,8 +486,8 @@ plot_reg(diff=diff, dist=dist, total_val_loss=total_val_loss, abs_diff=abs_diff,
 Save & Reload
 '''
 
-# save_model(model, "mnist.h5")
-# loaded_model = load_qmodel("mnist.h5")
+save_model(model, "mnist.h5")
+loaded_model = load_qmodel("mnist.h5")
 
 #score = loaded_model.evaluate(test_loader, verbose=0)
 #print(f"Test loss:{score[0]}, Test accuracy:{score[1]}")
@@ -535,7 +535,7 @@ def test_dnn_engine(PARAMS):
     '''
     VERIFY & EXPORT
     '''
-    # export_inference(loaded_model, hw, hw.ROWS)
+    export_inference(loaded_model, hw, hw.ROWS)
     # verify_inference(loaded_model, hw, SIM=SIM, SIM_PATH=SIM_PATH)
 
     # d_perf = predict_model_performance(hw)
