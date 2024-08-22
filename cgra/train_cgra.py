@@ -46,7 +46,7 @@ NB_EPOCH = 2
 BATCH_SIZE = 128
 VALIDATION_SPLIT = 0.1
 TRAINING_EPOCHS = 30
-DEBUG = True
+DEBUG = False
 training = True
 
 pmtxyz = get_pmtxyz("/home/amigala/PointNET_PMT_keras/data/pmt_xyz.dat")
