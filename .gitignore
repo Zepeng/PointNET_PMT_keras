@@ -8,3 +8,11 @@ data/train_X_y_ver_all_xyz_energy.npz
 data/train_X_y_ver_all_xyz_energy.zip
 keras_nominal
 enc*/
+cgra/vectors/*
+cgra/*.png
+cgra/*.txt
+cgra/*.h
+cgra/*.svh
+cgra/*.tcl
+cgra/*.json
+*.out

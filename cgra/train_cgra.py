@@ -46,7 +46,7 @@ NB_EPOCH = 2
 BATCH_SIZE = 128
 VALIDATION_SPLIT = 0.1
 TRAINING_EPOCHS = 30
-DEBUG = False
+DEBUG = True
 training = True
 
 pmtxyz = get_pmtxyz("/home/amigala/PointNET_PMT_keras/data/pmt_xyz.dat")
@@ -154,14 +154,14 @@ class UserModel(XModel):
                 b_int_bits=0,
                 filters=int(1024 / dim_reduce_factor),
                 kernel_size=1,
-                act=XActivation(sys_bits=sys_bits, o_int_bits=0, type=None)
+                act=XActivation(sys_bits=sys_bits, o_int_bits=0, type='relu', slope=0)
                 ),
             pool=XPool(
                 type='avg',
                 pool_size=(2126,1),
                 strides=(2126,1),
                 padding='same',
-                act=XActivation(sys_bits=sys_bits, o_int_bits=0, type="relu", slope=1),),
+                act=XActivation(sys_bits=sys_bits, o_int_bits=0, type=None),),
             flatten=True
             # core=XDense(
             #    k_int_bits=0,
