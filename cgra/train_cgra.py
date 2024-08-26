@@ -58,6 +58,7 @@ if DEBUG:
     X_tf, y_tf = X_tf[:small], y_tf[:small]
 
 new_X = preprocess_features(X_tf)
+print(X_tf.shape)
 
 # min/max scale the training data and the target data using their own scalers
 # training_scaler = MinMaxScaler((-1,1))
@@ -220,7 +221,8 @@ class UserModel(XModel):
 input_shape = X_tf.shape[1:]
 # (pmtxyz.shape[0], tf.shape(new_X)[2])
 # (pmtxyz.shape[0], 1, tf.shape(new_X)[2])
-x = x_in =  Input((pmtxyz.shape[0], 1, tf.shape(new_X)[2]), name="input")
+# print(tf.shape(new_X)[2])
+x = x_in =  Input((pmtxyz.shape[0], 1, 6), name="input")
 user_model = UserModel(sys_bits=sys_bits, x_int_bits=0)
 x = user_model(x_in)
 
@@ -580,6 +582,8 @@ Save & Reload
 
 # save_model(model, "mnist.h5")
 # loaded_model = load_qmodel("mnist.h5")
+# model.save("mnist.keras")
+# loaded_model = tf.keras.saving.load_model("mnist.keras")
 
 #score = loaded_model.evaluate(test_loader, verbose=0)
 #print(f"Test loss:{score[0]}, Test accuracy:{score[1]}")
@@ -630,7 +634,7 @@ def test_dnn_engine(PARAMS):
     export_inference(model, hw, hw.ROWS)
     # verify_inference(loaded_model, hw, SIM=SIM, SIM_PATH=SIM_PATH)
 
-    # d_perf = predict_model_performance(hw)
-    # pp = pprint.PrettyPrinter(indent=4)
-    # print(f"Predicted Performance")
-    # pp.pprint(d_perf)
+    d_perf = predict_model_performance(hw)
+    pp = pprint.PrettyPrinter(indent=4)
+    print(f"Predicted Performance")
+    pp.pprint(d_perf)
