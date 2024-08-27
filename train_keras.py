@@ -4,7 +4,7 @@
 #from torch.optim.lr_scheduler import ReduceLROnPlateau
 import numpy as np
 import matplotlib.pyplot as plt
-import wandb
+# import wandb
 import sys
 import os
 import argparse
@@ -18,6 +18,7 @@ from PointNet_merge import * # change this line for the one above for just pure 
 from read_point_cloud import * 
 from utils import *
 import datetime
+from sklearn.preprocessing import MinMaxScaler
 
 # tensorboard
 log_dir = "/home/amigala/tflogs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -34,7 +35,7 @@ parser.add_argument('--reduce_lr_wait', type=int, default=20)
 parser.add_argument('--enc_dropout', type=float, default=0.2)
 parser.add_argument('--dec_dropout', type=float, default=0.2)
 parser.add_argument('--weight_decay', type=float, default=1e-2)
-parser.add_argument('--batch_size', type=int, default=64)
+parser.add_argument('--batch_size', type=int, default=128)
 parser.add_argument('--smaller_run', action="store_true")
 parser.add_argument('--dim_reduce_factor', type=float, default=2)
 parser.add_argument('--debug', action="store_true")
@@ -85,6 +86,13 @@ if args.debug:
 ## insert "label" feature to tensor. This feature (0 or 1) is the activation of sensor
 new_X = preprocess_features(X_tf)
 
+# do scaling
+target_scaler = MinMaxScaler((-1,1))
+print(y_tf.shape)
+print(y_tf)
+y_tf = target_scaler.fit_transform(y_tf)
+y_tf = tf.convert_to_tensor(y_tf)
+
 ## Shuffle Data (w/ Seed)
 np.random.seed(seed=args.seed)
 #set_seed(seed=args.seed)
@@ -127,7 +135,6 @@ model.compile(optimizer=optimizer)
 tb_callback = tf.keras.callbacks.TensorBoard(log_dir)
 tb_callback.set_model(model)
 print(model.summary())
-assert 0
 
 ## Train Loop
 
@@ -161,8 +168,8 @@ for epoch in range(args.epochs):
             out = model(X)
             energy_mult = 160  # scale energy loss
             # Scale the last dimension of 'out' and 'y' tensors
-            out = tf.concat([out[:, :-1], energy_mult * tf.expand_dims(out[:, -1], axis=-1)], axis=-1)
-            y = tf.concat([y[:, :-1], energy_mult * tf.expand_dims(y[:, -1], axis=-1)], axis=-1)
+            # out = tf.concat([out[:, :-1], energy_mult * tf.expand_dims(out[:, -1], axis=-1)], axis=-1)
+            # y = tf.concat([y[:, :-1], energy_mult * tf.expand_dims(y[:, -1], axis=-1)], axis=-1)
 
             #out[:, -1], y[:, -1] = energy_mult * out[:, -1], energy_mult * y[:, -1]
             loss = tf.reduce_mean(tf.keras.losses.MSE(out, y))
@@ -233,37 +240,54 @@ min_values = {
 
 diff = {"x":[], "y":[], "z":[], "radius": [], "unif_r":[], "energy":[]}
 dist = {"x":[], "y":[], "z":[], "x_pred":[], "y_pred":[], "z_pred":[], "energy":[], "energy_pred":[],
-         "radius": [], "radius_pred": [], "unif_r": [], "unif_r_pred": []}
+        "radius": [], "radius_pred": [], "unif_r": [], "unif_r_pred": []}
 abs_diff = []
 #if args.train_mode:
 #    model.train()
 #else:
 print('Model eval')
+scale_factor = 1#25.
 with tqdm(total=len(val_loader), mininterval=5) as pbar:
     total_val_loss = 0
 
     for i, batch in enumerate(val_loader):
         X, y = batch
+        # try:
+        #     X = tf.convert_to_tensor(X.numpy().reshape((BATCH_SIZE, 2126, 1, 6)))
+        # except ValueError:
+        #     print("skipping batch due to incompatible size")
+        #     break
         out = model(X)
-        abs_diff.append(tf.abs(y - out))
+        # do inverse transform on data
+        # new_shape = out.shape
+        # print(X.shape)
+        # print(out.shape)
+        # print(y.shape)
+        out = tf.convert_to_tensor(target_scaler.inverse_transform(out))
+        y = tf.convert_to_tensor(target_scaler.inverse_transform(y))
+        # print(out)
+        # print(y)
+        # assert 0
+
+        abs_diff.append(tf.abs(y*scale_factor - out*scale_factor))
         val_loss = tf.reduce_mean(tf.keras.losses.MSE(out, y))
         total_val_loss += val_loss.numpy()
 
-        diff_tensor = y - out ## to vis. distribution
-        dist["x"].append(y[:, 0])
-        dist["y"].append(y[:, 1])
-        dist["z"].append(y[:, 2])
+        diff_tensor = (y - out)*scale_factor ## to vis. distribution
+        dist["x"].append(y[:, 0]*scale_factor)
+        dist["y"].append(y[:, 1]*scale_factor)
+        dist["z"].append(y[:, 2]*scale_factor)
 
-        dist["x_pred"].append(out[:, 0])
-        dist["y_pred"].append(out[:, 1])
-        dist["z_pred"].append(out[:, 2])
+        dist["x_pred"].append(out[:, 0]*scale_factor)
+        dist["y_pred"].append(out[:, 1]*scale_factor)
+        dist["z_pred"].append(out[:, 2]*scale_factor)
         
         diff["x"].append(diff_tensor[:, 0])
         diff["y"].append(diff_tensor[:, 1])
         diff["z"].append(diff_tensor[:, 2])
 
-        dist["energy"].append(y[:, 3])
-        dist["energy_pred"].append(out[:, 3])
+        dist["energy"].append(y[:, 3]*scale_factor)
+        dist["energy_pred"].append(out[:, 3]*scale_factor)
         diff["energy"].append(diff_tensor[:, 3])
 
         pbar.update()
@@ -272,6 +296,99 @@ with tqdm(total=len(val_loader), mininterval=5) as pbar:
 abs_diff = tf.concat(abs_diff, axis=0)
 
 ## plot and save
-plot_reg(diff=diff, dist=dist, total_val_loss=total_val_loss, abs_diff=abs_diff, save_name=save_name, args=args)
+save_name = f'./cgra_pointNET_last'
+
+# plot_reg(diff=diff, dist=dist, total_val_loss=total_val_loss, abs_diff=abs_diff, save_name=save_name, args=args)
+# if args.xyz_energy:
+abs_x_diff, abs_y_diff, abs_z_diff, abs_energy_diff = tf.reduce_mean(abs_diff, axis=0)
+energy_diff = tf.concat(diff["energy"], axis=0).cpu()
+energy_pred = tf.concat(dist["energy_pred"], axis=0).cpu()
+energy = tf.concat(dist["energy"], axis=0).cpu()
+# else:
+#     abs_x_diff, abs_y_diff, abs_z_diff = tf.reduce_mean(abs_diff, axis=0)
+
+x_diff = tf.concat(diff["x"], axis=0).cpu()
+y_diff = tf.concat(diff["y"], axis=0).cpu()
+z_diff = tf.concat(diff["z"], axis=0).cpu()
+
+x_pred = tf.concat(dist["x_pred"], axis=0).cpu()
+y_pred = tf.concat(dist["y_pred"], axis=0).cpu()
+z_pred = tf.concat(dist["z_pred"], axis=0).cpu()
+
+x = tf.concat(dist["x"], axis=0).cpu()
+y = tf.concat(dist["y"], axis=0).cpu()
+z = tf.concat(dist["z"], axis=0).cpu()
+
+plt.close()
+fig, axes = plt.subplots(nrows=2, ncols=4, figsize=(20, 15))
+# plt.subplots_adjust(wspace=0.2)
+fig.suptitle(f"Val. MSE: {total_val_loss:.2f} (MSE(x) + MSE(y) + MSE(y) + MSE(energy))\n\
+Avg. abs. diff. in x={abs_x_diff:.2f}, y={abs_y_diff:.2f}, z={abs_z_diff:.2f}, energy={abs_energy_diff:.2f}", fontsize=20)
+# else:
+#     fig, axes = plt.subplots(nrows=2, ncols=3, figsize=(20, 10))
+#     fig.suptitle(f"Val. MSE: {total_val_loss:.2f} (MSE(x) + MSE(y) + MSE(y))\n\
+#     Avg. abs. diff. in x={abs_x_diff:.2f}, y={abs_y_diff:.2f}, z={abs_z_diff:.2f}")
+
+## diff. plots
+x_diff_range = (-50, 50)
+large_fontsize = 20
+axes[0,0].hist(x_diff, bins=20, range=x_diff_range, edgecolor='black')
+axes[0,0].set_title(r"x_diff ($x - \hat{x}$)", fontsize=large_fontsize)
+axes[0,0].set_xlabel('x diff', fontsize=large_fontsize)
+axes[0,0].set_ylabel('freq', fontsize=large_fontsize)
+
+y_diff_range = (-50, 50)
+axes[0,1].hist(y_diff, bins=20, range=y_diff_range, edgecolor='black')
+axes[0,1].set_title(r"y_diff ($y - \hat{y}$)", fontsize=large_fontsize)
+axes[0,1].set_xlabel('y diff', fontsize=large_fontsize)
+# axes[0,1].set_ylabel('freq', fontsize=large_fontsize)
+
+z_diff_range = (-50, 50)
+axes[0,2].hist(z_diff, bins=20, range=z_diff_range, edgecolor='black')
+axes[0,2].set_title(r"z_diff ($z - \hat{z}$)", fontsize=large_fontsize)
+axes[0,2].set_xlabel('z diff', fontsize=large_fontsize)
+# axes[0,2].set_ylabel('freq', fontsize=large_fontsize)
+
+energy_diff_range = (0, 1)
+axes[0,3].hist(energy_diff, bins=20, range=energy_diff_range, edgecolor='black')
+axes[0,3].set_title(r"energy_diff ($energy - \hat{energy}$)", fontsize=large_fontsize)
+axes[0,3].set_xlabel('energy diff', fontsize=large_fontsize)
+# axes[0,3].set_ylabel('freq', fontsize=large_fontsize)
+
+## dist. plots
+x_range = (-250, 250)
+axes[1,0].hist(x, bins=20, range=x_range, edgecolor='black', label="x")
+axes[1,0].hist(x_pred, bins=20, range=x_range, edgecolor='blue', label=r'$\hat{x}$', alpha=0.5)
+axes[1,0].set_title("x dist", fontsize=large_fontsize)
+axes[1,0].set_xlabel('x', fontsize=large_fontsize)
+axes[1,0].set_ylabel('freq', fontsize=large_fontsize)
+
+y_range = (-250, 250)
+axes[1,1].hist(y, bins=20, range=y_range, edgecolor='black', label="y")
+axes[1,1].hist(y_pred, bins=20, range=y_range, edgecolor='blue', label=r'$\hat{y}$', alpha=0.5)
+axes[1,1].set_title("y dist", fontsize=large_fontsize)
+axes[1,1].set_xlabel('y', fontsize=large_fontsize)
+# axes[1,1].set_ylabel('freq', fontsize=large_fontsize)
+
+z_range = (-250, 250)
+axes[1,2].hist(x, bins=20, range=x_range, edgecolor='black', label="z")
+axes[1,2].hist(x_pred, bins=20, range=x_range, edgecolor='blue', label=r'$\hat{z}$', alpha=0.5)
+axes[1,2].set_title("z dist", fontsize=large_fontsize)
+axes[1,2].set_xlabel(r'z', fontsize=large_fontsize)
+# axes[1,2].set_ylabel('freq', fontsize=large_fontsize)
+
+energy_range = (0, 4)
+axes[1,3].hist(energy, bins=20, range=energy_range, edgecolor='black', label="label")
+axes[1,3].hist(energy_pred, bins=20, range=energy_range, edgecolor='blue', label="pred", alpha=0.5)
+axes[1,3].set_title(r"energy_diff ($energy - \hat{energy}$)", fontsize=large_fontsize)
+axes[1,3].set_xlabel('energy diff', fontsize=large_fontsize)
+# axes[1,3].set_ylabel('freq', fontsize=large_fontsize)
+
+axes[1, 0].legend()
+axes[1, 1].legend()
+axes[1, 2].legend()
+
+plt.savefig(save_name + "_hist.png")
+plt.close()
 # also upload the saved image to wandb
-wandb.log({"plot_reg": wandb.Image(save_name + "_hist.png")})
+# wandb.log({"plot_reg": wandb.Image(save_name + "_hist.png")})

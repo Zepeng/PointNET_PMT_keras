@@ -23,19 +23,19 @@ def PointClassifier(n_hits, dim, dim_reduce_factor, out_dim, enc_dropout, dec_dr
     
     # Begin PointNetfeat operations
     x = QConv1D(64, 1, activation=None, kernel_quantizer=quantized_bits(feat_options.a, feat_options.b), bias_quantizer=quantized_bits(feat_options.a, feat_options.b))(input_points)
-    x = layers.Dropout(enc_dropout)(x)
+    # x = layers.Dropout(enc_dropout)(x)
     x = QActivation('quantized_relu(8,0)')(x)
     x = QConv1D(int(128 / dim_reduce_factor), 1, kernel_quantizer=quantized_bits(feat_options.a, feat_options.b), bias_quantizer=quantized_bits(feat_options.a, feat_options.b))(x)
-    x = layers.Dropout(enc_dropout)(x)
+    # x = layers.Dropout(enc_dropout)(x)
     x = QActivation('quantized_relu(8,0)')(x)
     x = QConv1D(int(1024 / dim_reduce_factor), 1, kernel_quantizer=quantized_bits(feat_options.a, feat_options.b), bias_quantizer=quantized_bits(feat_options.a, feat_options.b))(x)
-    # global_stats = layers.GlobalAveragePooling1D()(x)
-    global_stats = tf.keras.backend.sum(x, axis=1) / 2126
+    global_stats = layers.GlobalAveragePooling1D()(x)
+    # global_stats = tf.keras.backend.sum(x, axis=1) / 2126
     # End PointNetfeat operations
     
     x = global_stats
     x = QDense(int(512 / dim_reduce_factor), activation='leaky_relu', kernel_quantizer=quantized_bits(decoder_options.a, decoder_options.b), bias_quantizer=quantized_bits(decoder_options.a, decoder_options.b))(x)
-    x = layers.Dropout(dec_dropout)(x)
+    # x = layers.Dropout(dec_dropout)(x)
     # x = QActivation('quantized_relu(8,0)')(x)
     x = QDense(int(128 / dim_reduce_factor), activation='leaky_relu', kernel_quantizer=quantized_bits(decoder_options.a, decoder_options.b), bias_quantizer=quantized_bits(decoder_options.a, decoder_options.b))(x)
     # x = layers.Dropout(dec_dropout)(x)
