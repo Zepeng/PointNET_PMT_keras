@@ -310,6 +310,31 @@ x = tf.concat(dist["x"], axis=0).cpu()
 y = tf.concat(dist["y"], axis=0).cpu()
 z = tf.concat(dist["z"], axis=0).cpu()
 
+# create save data
+val_save_data = {
+    'abs_x_diff': abs_x_diff.numpy(),
+    'abs_y_diff': abs_y_diff.numpy(),
+    'abs_z_diff': abs_z_diff.numpy(),
+    'abs_energy_diff': abs_energy_diff.numpy(),
+    'energy_diff': energy_diff.numpy(),
+    'energy_pred': energy_pred.numpy(),
+    'energy': energy.numpy(),
+    'x_diff': x_diff.numpy(),
+    'y_diff': y_diff.numpy(),
+    'z_diff': z_diff.numpy(),
+    'x_pred': x_pred.numpy(),
+    'y_pred': y_pred.numpy(),
+    'z_pred': z_pred.numpy(),
+    'x': x.numpy(),
+    'y': y.numpy(),
+    'z': z.numpy(),
+    'total_val_loss': total_val_loss
+}
+
+import pickle
+with open('save_data.pickle', 'wb') as handle:
+    pickle.dump(val_save_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
 plt.close()
 fig, axes = plt.subplots(nrows=2, ncols=4, figsize=(20, 15))
 # plt.subplots_adjust(wspace=0.2)
@@ -358,7 +383,7 @@ y_range = (-250, 250)
 axes[1,1].hist(y, bins=20, range=y_range, edgecolor='black', label="y")
 axes[1,1].hist(y_pred, bins=20, range=y_range, edgecolor='blue', label=r'$\hat{y}$', alpha=0.5)
 axes[1,1].set_title("y dist", fontsize=large_fontsize)
-axes[1,1].set_xlabel('y', fontsize=large_fontsize)
+axes[1,1].set_xlabel('y (cm)', fontsize=large_fontsize)
 # axes[1,1].set_ylabel('freq', fontsize=large_fontsize)
 
 z_range = (-250, 250)
@@ -372,7 +397,7 @@ energy_range = (0, 4)
 axes[1,3].hist(energy, bins=20, range=energy_range, edgecolor='black', label="label")
 axes[1,3].hist(energy_pred, bins=20, range=energy_range, edgecolor='blue', label="pred", alpha=0.5)
 axes[1,3].set_title(r"energy_diff ($energy - \hat{energy}$)", fontsize=large_fontsize)
-axes[1,3].set_xlabel('energy diff', fontsize=large_fontsize)
+axes[1,3].set_xlabel('Energy diff (MeV)', fontsize=large_fontsize)
 # axes[1,3].set_ylabel('freq', fontsize=large_fontsize)
 
 axes[1, 0].legend()

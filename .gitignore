@@ -16,3 +16,5 @@ cgra/*.svh
 cgra/*.tcl
 cgra/*.json
 *.out
+_hist.png
+save_data.pickle
