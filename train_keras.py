@@ -31,25 +31,17 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--epochs', type=int, default=10)
 parser.add_argument('--lr', type=float, default=1e-3)
 parser.add_argument('--use_wandb', action="store_true")
-parser.add_argument('--reduce_lr_wait', type=int, default=20)
-parser.add_argument('--enc_dropout', type=float, default=0.2)
-parser.add_argument('--dec_dropout', type=float, default=0.2)
-parser.add_argument('--weight_decay', type=float, default=1e-2)
 parser.add_argument('--batch_size', type=int, default=128)
 parser.add_argument('--smaller_run', action="store_true")
 parser.add_argument('--dim_reduce_factor', type=float, default=2)
 parser.add_argument('--debug', action="store_true")
 parser.add_argument('--save_ver', default=0)
-parser.add_argument('--mean_only', action="store_true")
-parser.add_argument('--save_best', action="store_true")
 parser.add_argument('--seed', type=int, default=999)
-parser.add_argument('--patience', type=int, default=15)
-parser.add_argument('--xyz_label', action="store_true")
-parser.add_argument('--xyz_energy', action="store_true")
 parser.add_argument('--enc_a', type=int, default=8)
 parser.add_argument('--enc_b', type=int, default=0)
 parser.add_argument('--dec_a', type=int, default=8)
 parser.add_argument('--dec_b', type=int, default=0)
+parser.add_argument('--o_int_bits', type=int, default=0)
 gpus = tf.config.experimental.list_physical_devices('GPU')
 if gpus:
     try:
@@ -118,15 +110,14 @@ model = PointClassifier(
                 dim = tf.shape(new_X)[2],
                 dim_reduce_factor=args.dim_reduce_factor,
                 out_dim = y_tf.shape[-1],
-                enc_dropout = args.enc_dropout,
-                dec_dropout = args.dec_dropout,
                 feat_options=QBitOptions(args.enc_a, args.enc_b),
-                decoder_options=QBitOptions(args.dec_a, args.dec_b)
+                decoder_options=QBitOptions(args.dec_a, args.dec_b),
+                o_int_bits=args.o_int_bits
                 )
 epochs = range(args.epochs)
 
 # 2. Define the optimizer
-optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr, beta_1=0.9, beta_2=0.999, epsilon=1e-07, amsgrad=False, weight_decay=args.weight_decay)
+optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr, beta_1=0.9, beta_2=0.999, epsilon=1e-07, amsgrad=False)
 
 #model.compile(optimizer=optimizer, loss=tf.keras.losses.MeanSquaredError())
 model.compile(optimizer=optimizer)
@@ -218,8 +209,9 @@ for epoch in range(args.epochs):
         # Save best model based on validation loss
         if total_val_loss < best_val:
             best_val = total_val_loss
-            if args.save_best:
-                model.save(save_name + ".keras")
+            # if args.save_best:
+            #     model.save(save_name + ".keras")
+            print("new best found..not saving")
     
     # Log training loss
     else:
@@ -296,7 +288,6 @@ with tqdm(total=len(val_loader), mininterval=5) as pbar:
 abs_diff = tf.concat(abs_diff, axis=0)
 
 ## plot and save
-save_name = f'./cgra_pointNET_last'
 
 # plot_reg(diff=diff, dist=dist, total_val_loss=total_val_loss, abs_diff=abs_diff, save_name=save_name, args=args)
 # if args.xyz_energy:
@@ -388,7 +379,7 @@ axes[1, 0].legend()
 axes[1, 1].legend()
 axes[1, 2].legend()
 
-plt.savefig(save_name + "_hist.png")
+plt.savefig(f'./{args.save_ver}/{args.save_ver}_hist.png')
 plt.close()
 # also upload the saved image to wandb
 # wandb.log({"plot_reg": wandb.Image(save_name + "_hist.png")})

@@ -8,7 +8,7 @@ class QBitOptions():
         self.a = a
         self.b = b
 
-def PointClassifier(n_hits, dim, dim_reduce_factor, out_dim, enc_dropout, dec_dropout, feat_options: QBitOptions = QBitOptions(8,0), decoder_options: QBitOptions = QBitOptions(8,0)):
+def PointClassifier(n_hits, dim, dim_reduce_factor, out_dim, feat_options: QBitOptions = QBitOptions(8,0), decoder_options: QBitOptions = QBitOptions(8,0), o_int_bits=0):
     input_points = tf.keras.Input(shape=(n_hits, dim))
 
     def process_data_with_label(x):
@@ -24,11 +24,12 @@ def PointClassifier(n_hits, dim, dim_reduce_factor, out_dim, enc_dropout, dec_dr
     # Begin PointNetfeat operations
     x = QConv1D(64, 1, activation=None, kernel_quantizer=quantized_bits(feat_options.a, feat_options.b), bias_quantizer=quantized_bits(feat_options.a, feat_options.b))(input_points)
     # x = layers.Dropout(enc_dropout)(x)
-    x = QActivation('quantized_relu(8,0)')(x)
+    x = QActivation(f'quantized_relu(8,{o_int_bits})')(x)
     x = QConv1D(int(128 / dim_reduce_factor), 1, kernel_quantizer=quantized_bits(feat_options.a, feat_options.b), bias_quantizer=quantized_bits(feat_options.a, feat_options.b))(x)
     # x = layers.Dropout(enc_dropout)(x)
-    x = QActivation('quantized_relu(8,0)')(x)
+    x = QActivation(f'quantized_relu(8,{o_int_bits})')(x)
     x = QConv1D(int(1024 / dim_reduce_factor), 1, kernel_quantizer=quantized_bits(feat_options.a, feat_options.b), bias_quantizer=quantized_bits(feat_options.a, feat_options.b))(x)
+    x = QActivation(f'quantized_relu(8,{o_int_bits})')(x)
     global_stats = layers.GlobalAveragePooling1D()(x)
     # global_stats = tf.keras.backend.sum(x, axis=1) / 2126
     # End PointNetfeat operations
@@ -36,10 +37,10 @@ def PointClassifier(n_hits, dim, dim_reduce_factor, out_dim, enc_dropout, dec_dr
     x = global_stats
     x = QDense(int(512 / dim_reduce_factor), activation='leaky_relu', kernel_quantizer=quantized_bits(decoder_options.a, decoder_options.b), bias_quantizer=quantized_bits(decoder_options.a, decoder_options.b))(x)
     # x = layers.Dropout(dec_dropout)(x)
-    # x = QActivation('quantized_relu(8,0)')(x)
+    x = QActivation(f'quantized_relu(8,{o_int_bits})')(x)
     x = QDense(int(128 / dim_reduce_factor), activation='leaky_relu', kernel_quantizer=quantized_bits(decoder_options.a, decoder_options.b), bias_quantizer=quantized_bits(decoder_options.a, decoder_options.b))(x)
     # x = layers.Dropout(dec_dropout)(x)
-    # x = QActivation('quantized_relu(8,0)')(x)
+    x = QActivation(f'quantized_relu(8,{o_int_bits})')(x)
     outputs = QDense(out_dim, kernel_quantizer=quantized_bits(decoder_options.a, decoder_options.b), bias_quantizer=quantized_bits(decoder_options.a, decoder_options.b))(x)
 
     model = models.Model(input_points, outputs)
