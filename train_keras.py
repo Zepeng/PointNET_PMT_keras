@@ -332,7 +332,7 @@ val_save_data = {
 }
 
 import pickle
-with open('save_data.pickle', 'wb') as handle:
+with open(f'{args.save_ver}.pickle', 'wb') as handle:
     pickle.dump(val_save_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 plt.close()

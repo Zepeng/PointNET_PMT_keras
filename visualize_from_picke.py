@@ -1,7 +1,10 @@
 import pickle
 import matplotlib.pyplot as plt
+from scipy.stats import norm
 
-with open('save_data.pickle', 'rb') as handle:
+LOAD_NAME = 'save_data'
+
+with open(f'{LOAD_NAME}.pickle', 'rb') as handle:
     save_data = pickle.load(handle)
 
 # unpack from pickle file
@@ -33,30 +36,40 @@ Avg. abs. diff. in x={abs_x_diff:.2f}, y={abs_y_diff:.2f}, z={abs_z_diff:.2f}, e
 #     fig.suptitle(f"Val. MSE: {total_val_loss:.2f} (MSE(x) + MSE(y) + MSE(y))\n\
 #     Avg. abs. diff. in x={abs_x_diff:.2f}, y={abs_y_diff:.2f}, z={abs_z_diff:.2f}")
 
+
+def plot_error_bar(axis, data, bins, name="unnamed"):
+    (mu, sigma) = norm.fit(data)
+    print(f'{name} mu: {mu}, sigma: {sigma}')
+    axis.plot(bins, norm.pdf(bins, mu, sigma), 'g--', linewidth=10)
+
 ## diff. plots
 x_diff_range = (-50, 50)
 large_fontsize = 20
-axes[0,0].hist(x_diff, bins=20, range=x_diff_range, edgecolor='black')
+_, x_diff_bins, __ = axes[0,0].hist(x_diff, bins=20, range=x_diff_range, edgecolor='black', density=True)
 axes[0,0].set_title(r"x_diff ($x - \hat{x}$)", fontsize=large_fontsize)
 axes[0,0].set_xlabel('x diff', fontsize=large_fontsize)
 axes[0,0].set_ylabel('freq', fontsize=large_fontsize)
+plot_error_bar(axes[0,0], x_diff, x_diff_bins, name='x_diff')
+
 
 y_diff_range = (-50, 50)
-axes[0,1].hist(y_diff, bins=20, range=y_diff_range, edgecolor='black')
+_, y_diff_bins, __ = axes[0,1].hist(y_diff, bins=20, range=y_diff_range, edgecolor='black', density=True)
 axes[0,1].set_title(r"y_diff ($y - \hat{y}$)", fontsize=large_fontsize)
 axes[0,1].set_xlabel('y diff', fontsize=large_fontsize)
-# axes[0,1].set_ylabel('freq', fontsize=large_fontsize)
+plot_error_bar(axes[0,1], y_diff, y_diff_bins, name='y_diff')
 
 z_diff_range = (-50, 50)
-axes[0,2].hist(z_diff, bins=20, range=z_diff_range, edgecolor='black')
+_, z_diff_bins, __ = axes[0,2].hist(z_diff, bins=20, range=z_diff_range, edgecolor='black', density=True)
 axes[0,2].set_title(r"z_diff ($z - \hat{z}$)", fontsize=large_fontsize)
 axes[0,2].set_xlabel('z diff', fontsize=large_fontsize)
+plot_error_bar(axes[0,2], z_diff, z_diff_bins, name='z_diff')
 # axes[0,2].set_ylabel('freq', fontsize=large_fontsize)
 
-energy_diff_range = (0, 1)
-axes[0,3].hist(energy_diff, bins=20, range=energy_diff_range, edgecolor='black')
+energy_diff_range = (-1, 1)
+_, energy_diff_bins, __ = axes[0,3].hist(energy_diff, bins=20, range=energy_diff_range, edgecolor='black', density=True)
 axes[0,3].set_title(r"energy_diff ($energy - \hat{energy}$)", fontsize=large_fontsize)
 axes[0,3].set_xlabel('energy diff', fontsize=large_fontsize)
+plot_error_bar(axes[0,3], energy_diff, energy_diff_bins, name='energy')
 # axes[0,3].set_ylabel('freq', fontsize=large_fontsize)
 
 ## dist. plots
@@ -81,7 +94,7 @@ axes[1,2].set_title("z dist", fontsize=large_fontsize)
 axes[1,2].set_xlabel(r'z', fontsize=large_fontsize)
 # axes[1,2].set_ylabel('freq', fontsize=large_fontsize)
 
-energy_range = (0, 4)
+energy_range = (-4, 4) #(0, 4)
 axes[1,3].hist(energy, bins=20, range=energy_range, edgecolor='black', label="label")
 axes[1,3].hist(energy_pred, bins=20, range=energy_range, edgecolor='blue', label="pred", alpha=0.5)
 axes[1,3].set_title(r"energy_diff ($energy - \hat{energy}$)", fontsize=large_fontsize)
@@ -92,5 +105,5 @@ axes[1, 0].legend()
 axes[1, 1].legend()
 axes[1, 2].legend()
 
-plt.savefig(f'./_hist.png')
+plt.savefig(f'./{LOAD_NAME}_hist.png')
 plt.close()
