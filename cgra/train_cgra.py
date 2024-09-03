@@ -395,10 +395,6 @@ if training:
     # Close progress bar
     pbar.close()
 
-    ## time
-    # tot_time = time() - strt
-
-    ## min values
     min_train = round(min(tot_train_lst), 2)
     min_values = {
             "min_train": min_train,
@@ -432,8 +428,8 @@ if training:
             # print(y.shape)
             out = tf.convert_to_tensor(target_scaler.inverse_transform(out))
             y = tf.convert_to_tensor(target_scaler.inverse_transform(y))
-            print(out)
-            print(y)
+            # print(out)
+            # print(y)
             # assert 0
 
             abs_diff.append(tf.abs(y*scale_factor - out*scale_factor))
@@ -463,29 +459,6 @@ if training:
     abs_diff = tf.concat(abs_diff, axis=0)
 
     ## plot and save
-    save_name = f'./cgra_pointNET_last'
-    # import argparse
-    # parser = argparse.ArgumentParser()
-    # ## Hyperparameters
-    # parser.add_argument('--epochs', type=int, default=10)
-    # parser.add_argument('--lr', type=float, default=1e-3)
-    # parser.add_argument('--use_wandb', action="store_true")
-    # parser.add_argument('--reduce_lr_wait', type=int, default=20)
-    # parser.add_argument('--enc_dropout', type=float, default=0.2)
-    # parser.add_argument('--dec_dropout', type=float, default=0.2)
-    # parser.add_argument('--weight_decay', type=float, default=1e-2)
-    # parser.add_argument('--batch_size', type=int, default=64)
-    # parser.add_argument('--smaller_run', action="store_true")
-    # parser.add_argument('--dim_reduce_factor', type=float, default=1.5)
-    # parser.add_argument('--debug', action="store_true")
-    # parser.add_argument('--save_ver', default=0)
-    # parser.add_argument('--mean_only', action="store_true")
-    # parser.add_argument('--save_best', action="store_true")
-    # parser.add_argument('--seed', type=int, default=999)
-    # parser.add_argument('--patience', type=int, default=15)
-    # parser.add_argument('--xyz_label', action="store_true")
-    # parser.add_argument('--xyz_energy', action="store_true")
-    # args = parser.parse_args()
 
     # plot_reg(diff=diff, dist=dist, total_val_loss=total_val_loss, abs_diff=abs_diff, save_name=save_name, args=args)
     # if args.xyz_energy:
@@ -507,6 +480,31 @@ if training:
     x = tf.concat(dist["x"], axis=0).cpu()
     y = tf.concat(dist["y"], axis=0).cpu()
     z = tf.concat(dist["z"], axis=0).cpu()
+
+    # create save data
+    val_save_data = {
+        'abs_x_diff': abs_x_diff.numpy(),
+        'abs_y_diff': abs_y_diff.numpy(),
+        'abs_z_diff': abs_z_diff.numpy(),
+        'abs_energy_diff': abs_energy_diff.numpy(),
+        'energy_diff': energy_diff.numpy(),
+        'energy_pred': energy_pred.numpy(),
+        'energy': energy.numpy(),
+        'x_diff': x_diff.numpy(),
+        'y_diff': y_diff.numpy(),
+        'z_diff': z_diff.numpy(),
+        'x_pred': x_pred.numpy(),
+        'y_pred': y_pred.numpy(),
+        'z_pred': z_pred.numpy(),
+        'x': x.numpy(),
+        'y': y.numpy(),
+        'z': z.numpy(),
+        'total_val_loss': total_val_loss
+    }
+
+    import pickle
+    with open(f'cgra_pointnet.pickle', 'wb') as handle:
+        pickle.dump(val_save_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     plt.close()
     fig, axes = plt.subplots(nrows=2, ncols=4, figsize=(20, 15))
@@ -556,7 +554,7 @@ if training:
     axes[1,1].hist(y, bins=20, range=y_range, edgecolor='black', label="y")
     axes[1,1].hist(y_pred, bins=20, range=y_range, edgecolor='blue', label=r'$\hat{y}$', alpha=0.5)
     axes[1,1].set_title("y dist", fontsize=large_fontsize)
-    axes[1,1].set_xlabel('y', fontsize=large_fontsize)
+    axes[1,1].set_xlabel('y (cm)', fontsize=large_fontsize)
     # axes[1,1].set_ylabel('freq', fontsize=large_fontsize)
 
     z_range = (-250, 250)
@@ -570,15 +568,17 @@ if training:
     axes[1,3].hist(energy, bins=20, range=energy_range, edgecolor='black', label="label")
     axes[1,3].hist(energy_pred, bins=20, range=energy_range, edgecolor='blue', label="pred", alpha=0.5)
     axes[1,3].set_title(r"energy_diff ($energy - \hat{energy}$)", fontsize=large_fontsize)
-    axes[1,3].set_xlabel('energy diff', fontsize=large_fontsize)
+    axes[1,3].set_xlabel('Energy diff (MeV)', fontsize=large_fontsize)
     # axes[1,3].set_ylabel('freq', fontsize=large_fontsize)
 
     axes[1, 0].legend()
     axes[1, 1].legend()
     axes[1, 2].legend()
 
-    plt.savefig(save_name + "_hist.png")
+    plt.savefig(f'./cgra_pointNET_last_hist.png')
     plt.close()
+# also upload the saved image to wandb
+# wandb.log({"plot_reg": wandb.Image(save_name + "_hist.png")})
 
 '''
 Save & Reload

@@ -2,7 +2,7 @@ import pickle
 import matplotlib.pyplot as plt
 from scipy.stats import norm
 
-LOAD_NAME = 'save_data'
+LOAD_NAME = './cgra/cgra_pointnet'
 
 with open(f'{LOAD_NAME}.pickle', 'rb') as handle:
     save_data = pickle.load(handle)
@@ -105,5 +105,5 @@ axes[1, 0].legend()
 axes[1, 1].legend()
 axes[1, 2].legend()
 
-plt.savefig(f'./{LOAD_NAME}_hist.png')
+plt.savefig(f'./{LOAD_NAME}_hist_with_fit.png')
 plt.close()
