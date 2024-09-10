@@ -43,7 +43,7 @@ Dataset
 Define Model
 '''
 
-sys_bits = SYS_BITS(x=12, k=8, b=16)
+sys_bits = SYS_BITS(x=8, k=8, b=16)
 NB_EPOCH = 2
 BATCH_SIZE = 128
 VALIDATION_SPLIT = 0.1
@@ -522,7 +522,7 @@ if training:
     axes[0,0].hist(x_diff, bins=20, range=x_diff_range, edgecolor='black')
     axes[0,0].set_title(r"x_diff ($x - \hat{x}$)", fontsize=large_fontsize)
     axes[0,0].set_xlabel('x diff', fontsize=large_fontsize)
-    axes[0,0].set_ylabel('freq', fontsize=large_fontsize)
+    axes[0,0].set_ylabel('Probability', fontsize=large_fontsize)
 
     y_diff_range = (-50, 50)
     axes[0,1].hist(y_diff, bins=20, range=y_diff_range, edgecolor='black')
@@ -547,8 +547,8 @@ if training:
     axes[1,0].hist(x, bins=20, range=x_range, edgecolor='black', label="x")
     axes[1,0].hist(x_pred, bins=20, range=x_range, edgecolor='blue', label=r'$\hat{x}$', alpha=0.5)
     axes[1,0].set_title("x dist", fontsize=large_fontsize)
-    axes[1,0].set_xlabel('x', fontsize=large_fontsize)
-    axes[1,0].set_ylabel('freq', fontsize=large_fontsize)
+    axes[1,0].set_xlabel('x (cm)', fontsize=large_fontsize)
+    axes[1,0].set_ylabel('Probability', fontsize=large_fontsize)
 
     y_range = (-250, 250)
     axes[1,1].hist(y, bins=20, range=y_range, edgecolor='black', label="y")
@@ -561,7 +561,7 @@ if training:
     axes[1,2].hist(x, bins=20, range=x_range, edgecolor='black', label="z")
     axes[1,2].hist(x_pred, bins=20, range=x_range, edgecolor='blue', label=r'$\hat{z}$', alpha=0.5)
     axes[1,2].set_title("z dist", fontsize=large_fontsize)
-    axes[1,2].set_xlabel(r'z', fontsize=large_fontsize)
+    axes[1,2].set_xlabel(r'z (cm)', fontsize=large_fontsize)
     # axes[1,2].set_ylabel('freq', fontsize=large_fontsize)
 
     energy_range = (0, 4)

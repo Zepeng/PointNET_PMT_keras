@@ -73,6 +73,8 @@ y_tf = tf.convert_to_tensor(data_npz['y'], dtype=tf.float32)
 if args.debug:
     small = 5000
     X_tf, y_tf = X_tf[:small], y_tf[:small]
+print(X_tf.shape)
+assert 0
 
 ## switch to match Aobo's syntax (time, charge, x, y, z) -> (x, y, z, label, time, charge)
 ## insert "label" feature to tensor. This feature (0 or 1) is the activation of sensor
