@@ -19,3 +19,4 @@ cgra/*.json
 _hist.png
 save_data.pickle
 *.pickle
+animation.png
