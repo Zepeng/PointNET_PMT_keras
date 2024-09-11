@@ -8,3 +8,4 @@ rm mem_bytes.txt
 rm sources.txt
 rm util.txt
 rm vivado_flow.tcl
+rm accuracy_test.json

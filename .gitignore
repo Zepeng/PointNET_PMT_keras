@@ -18,3 +18,4 @@ cgra/*.json
 *.out
 _hist.png
 save_data.pickle
+*.pickle

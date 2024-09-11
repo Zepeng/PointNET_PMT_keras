@@ -47,8 +47,8 @@ sys_bits = SYS_BITS(x=8, k=8, b=16)
 NB_EPOCH = 2
 BATCH_SIZE = 128
 VALIDATION_SPLIT = 0.1
-TRAINING_EPOCHS = 50
-DEBUG = False
+TRAINING_EPOCHS = 30
+DEBUG = True
 training = True
 
 pmtxyz = get_pmtxyz("/home/amigala/PointNET_PMT_keras/data/pmt_xyz.dat")
@@ -410,13 +410,19 @@ if training:
     #else:
     print('Model eval')
     scale_factor = 1#25.
+    collect_export_values = True
+
     with tqdm(total=len(val_loader), mininterval=5) as pbar:
         total_val_loss = 0
 
         for i, batch in enumerate(val_loader):
             X, y = batch
+            print(f"Collecting values for hardware accuracy test: {collect_export_values}")
             try:
                 X = tf.convert_to_tensor(X.numpy().reshape((BATCH_SIZE, 2126, 1, 6)))
+                if collect_export_values:
+                    global deploy_val_X
+                    deploy_val_X = X
             except ValueError:
                 print("skipping batch due to incompatible size")
                 break
@@ -428,6 +434,20 @@ if training:
             # print(y.shape)
             out = tf.convert_to_tensor(target_scaler.inverse_transform(out))
             y = tf.convert_to_tensor(target_scaler.inverse_transform(y))
+            if collect_export_values:
+                global deploy_val_model
+                global deploy_val_Y_truth
+
+                deploy_val_model = out
+                deploy_val_Y_truth = y
+                collect_export_values = False
+                # now save these values
+                import json
+                with open("accuracy_test.json", 'w') as fp:
+                    json.dump({
+                        'model_value': out.numpy().tolist(),
+                        'target_value': y.numpy().tolist()
+                    }, fp)
             # print(out)
             # print(y)
             # assert 0
@@ -606,7 +626,7 @@ def product_dict(**kwargs):
                                         bits_weights         = [ 8       ],
                                         bits_sum             = [ 32      ],
                                         bits_bias            = [ 16      ],
-                                        max_batch_size       = [ 64      ], 
+                                        max_batch_size       = [ 128      ], 
                                         max_channels_in      = [ 2048    ],
                                         max_kernel_size      = [ 9       ],
                                         max_image_size       = [ 2126    ],
@@ -635,7 +655,7 @@ def test_dnn_engine(PARAMS):
     '''
     VERIFY & EXPORT
     '''
-    export_inference(model, hw, hw.ROWS)
+    export_inference(model, hw, custom_input=deploy_val_X)
     # verify_inference(loaded_model, hw, SIM=SIM, SIM_PATH=SIM_PATH)
 
     d_perf = predict_model_performance(hw)
