@@ -21,3 +21,5 @@ save_data.pickle
 *.pickle
 animation.png
 *.gif
+*.h5
+*.tar.gz

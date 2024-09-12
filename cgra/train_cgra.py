@@ -27,6 +27,7 @@ from utils import *
 from deepsocflow import *
 from sklearn.preprocessing import MinMaxScaler
 import matplotlib
+import pickle
 matplotlib.rc('xtick', labelsize=15)
 matplotlib.rc('ytick', labelsize=15)
 
@@ -47,7 +48,7 @@ sys_bits = SYS_BITS(x=8, k=8, b=16)
 NB_EPOCH = 2
 BATCH_SIZE = 128
 VALIDATION_SPLIT = 0.1
-TRAINING_EPOCHS = 30
+TRAINING_EPOCHS = 1
 DEBUG = True
 training = True
 
@@ -423,6 +424,9 @@ if training:
                 if collect_export_values:
                     global deploy_val_X
                     deploy_val_X = X
+
+                    with open(f'X.pickle', 'wb') as handle:
+                        pickle.dump(X.numpy(), handle, protocol=pickle.HIGHEST_PROTOCOL)
             except ValueError:
                 print("skipping batch due to incompatible size")
                 break
@@ -446,7 +450,8 @@ if training:
                 with open("accuracy_test.json", 'w') as fp:
                     json.dump({
                         'model_value': out.numpy().tolist(),
-                        'target_value': y.numpy().tolist()
+                        'target_value': y.numpy().tolist(),
+                        'X_vals': deploy_val_X.numpy().tolist()
                     }, fp)
             # print(out)
             # print(y)
@@ -522,7 +527,6 @@ if training:
         'total_val_loss': total_val_loss
     }
 
-    import pickle
     with open(f'cgra_pointnet.pickle', 'wb') as handle:
         pickle.dump(val_save_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
@@ -604,7 +608,6 @@ if training:
 Save & Reload
 '''
 
-# save_model(model, "mnist.h5")
 # loaded_model = load_qmodel("mnist.h5")
 # model.save("mnist.keras")
 # loaded_model = tf.keras.saving.load_model("mnist.keras")

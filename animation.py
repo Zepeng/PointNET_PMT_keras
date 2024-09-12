@@ -33,15 +33,18 @@ for i in range(5):
     # _, _, hist_container = energy_ax.hist(np.array(model_values).T[3][:i])
     # print(type(model_ax.scatter(model_values[i][0], model_values[i][1], model_values[i][2])))
     # so we may have to animate the histogram seperately since it uses a collection of artists
-    artists.append(
-        [
+    to_append = [
             model_ax.scatter(model_values[i][0], model_values[i][1], model_values[i][2], label='Predicted', color='green'),
             model_ax.scatter(target_values[i][0], target_values[i][1], target_values[i][2], label='True', color='orange'),
             fpga_ax.scatter(pmts.T[0], pmts.T[1], pmts.T[2], alpha=0.1, color='green'),
-    ])
+    ]
+    # if i==0:
+    #     to_append.append(model_ax.legend())
+    artists.append(to_append)
 
-
+# adapted from https://matplotlib.org/stable/gallery/animation/animated_histogram.html
 def animate(frame_number, bar_container):
+    print(model_energies[:frame_number+1])
     n, _ = np.histogram(model_energies[:frame_number+1], np.linspace(-4,4,100))
     for count, rect in zip(n, bar_container.patches):
         rect.set_height(count)
@@ -52,7 +55,7 @@ spatial_ani = animation.ArtistAnimation(fig=fig, artists=artists)
 energy_fig, energy_ax = plt.subplots()
 _, _, bar_container = energy_ax.hist(np.random.rand(100), np.linspace(-4,4,100))
 energy_anim = functools.partial(animate, bar_container=bar_container)
-energy_ani = animation.FuncAnimation(energy_fig, energy_anim, 50, repeat=True, blit=True)
+energy_ani = animation.FuncAnimation(energy_fig, energy_anim, 128, repeat=True, blit=True)
 
 writer = animation.PillowWriter(fps=2)
 
