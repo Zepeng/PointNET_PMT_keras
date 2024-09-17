@@ -22,6 +22,11 @@ with open('./cgra/accuracy_test.json', 'r') as file:
 model_energies = np.array(model_values).T[3]
 target_energies = np.array(target_values).T[3]
 
+# now load the fpga output
+with open('./fpga output.json', 'r') as fp:
+    global fpga_vals
+    fpga_vals = json.load(fp)['vals']
+
 fig = plt.figure(figsize=plt.figaspect(0.5))
 model_ax = fig.add_subplot(1,2,1,projection='3d')
 fpga_ax = fig.add_subplot(1,2,2,projection='3d')
@@ -32,7 +37,7 @@ fpga_ax = fig.add_subplot(1,2,2,projection='3d')
 
 artists = []
 all_point_vals = np.reshape(np.array(X_vals), (64,2126,6))
-for i in range(64):
+for i in range(32):
     print(f'rendering frame {i}')
     # _, _, hist_container = energy_ax.hist(np.array(model_values).T[3][:i])
     # print(type(model_ax.scatter(model_values[i][0], model_values[i][1], model_values[i][2])))
@@ -46,6 +51,7 @@ for i in range(64):
             model_ax.scatter(model_values[i][0], model_values[i][1], model_values[i][2], label='Predicted', color='green'),
             model_ax.scatter(target_values[i][0], target_values[i][1], target_values[i][2], label='True', color='orange'),
             fpga_ax.scatter(pmts.T[0], pmts.T[1], pmts.T[2], alpha=0.1, color='green'),
+            fpga_ax.scatter(fpga_vals[i][0], fpga_vals[i][1], fpga_vals[i][2], color='red')
     ]
     # if i==0:
     #     to_append.append(model_ax.legend())
@@ -61,12 +67,21 @@ def animate(frame_number, bar_container):
 
 
 spatial_ani = animation.ArtistAnimation(fig=fig, artists=artists)
+
 energy_fig, energy_ax = plt.subplots()
-_, _, bar_container = energy_ax.hist(np.random.rand(100), np.linspace(-4,4,100))
+_, _, bar_container = energy_ax.hist(model_energies, np.linspace(-4,4,100), color='red', histtype='step')
 energy_ax.set_ylabel('Count')
 energy_ax.set_xlabel('Energy (MeV)')
-energy_anim = functools.partial(animate, bar_container=bar_container)
-energy_ani = animation.FuncAnimation(energy_fig, energy_anim, 64, repeat=True, blit=True)
+
+# try animating using artist animation now
+bar_artists = []
+for frame in range(len(model_energies)):
+    _, _, patches = energy_ax.hist(model_energies[:frame+1], np.linspace(-4,4,100), color='yellow')
+    bar_artists.append(patches)
+
+# energy_anim = functools.partial(animate, bar_container=bar_container)
+# energy_ani = animation.FuncAnimation(energy_fig, energy_anim, 32, repeat=True, blit=True)
+energy_ani = animation.ArtistAnimation(fig=energy_fig, artists=bar_artists)
 
 writer = animation.PillowWriter(fps=2)
 
