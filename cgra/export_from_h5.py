@@ -135,7 +135,7 @@ class UserModel(XModel):
         # print(f'Output from one pass: {x}')
         return x
 
-loaded_model = load_qmodel("mnist.h5")
+loaded_model = load_qmodel("cgra_model.h5")
 # model.save("mnist.keras")
 # loaded_model = tf.keras.saving.load_model("mnist.keras")
 
@@ -145,6 +145,9 @@ import pickle
 with open(f'X.pickle', 'rb') as handle:
     global custom_input
     custom_input = pickle.load(handle)
+    custom_input = np.array(custom_input)[0].reshape(1,2126,1,6)
+    custom_input = tf.convert_to_tensor(custom_input)
+    print(loaded_model(handle))
 
 
 def product_dict(**kwargs):

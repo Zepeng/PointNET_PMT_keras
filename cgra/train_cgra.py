@@ -46,9 +46,9 @@ Define Model
 
 sys_bits = SYS_BITS(x=8, k=8, b=16)
 NB_EPOCH = 2
-BATCH_SIZE = 128
+BATCH_SIZE = 64
 VALIDATION_SPLIT = 0.1
-TRAINING_EPOCHS = 1
+TRAINING_EPOCHS = 10
 DEBUG = True
 training = True
 
@@ -607,7 +607,7 @@ if training:
 '''
 Save & Reload
 '''
-
+save_model(model, 'cgra_model.h5')
 # loaded_model = load_qmodel("mnist.h5")
 # model.save("mnist.keras")
 # loaded_model = tf.keras.saving.load_model("mnist.keras")
