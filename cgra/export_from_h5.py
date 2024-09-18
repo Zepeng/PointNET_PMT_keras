@@ -23,6 +23,7 @@ from time import time
 from PointNet_merge import *
 from read_point_cloud import * 
 from utils import *
+import json
 
 from deepsocflow import *
 from sklearn.preprocessing import MinMaxScaler
@@ -147,7 +148,25 @@ with open(f'X.pickle', 'rb') as handle:
     custom_input = pickle.load(handle)
     custom_input = np.array(custom_input)[0].reshape(1,2126,1,6)
     custom_input = tf.convert_to_tensor(custom_input)
-    print(loaded_model(handle))
+    print(loaded_model(custom_input))
+
+with open('./accuracy_test.json', 'r') as file:
+    acc_test = json.load(file)
+    global model_values
+    global target_values
+    global X_vals
+    model_values = acc_test['model_value']
+    target_values = acc_test['target_value']
+    X_vals = acc_test['X_vals']
+
+# now need to reload the scaler
+import joblib
+target_scaler = joblib.load('target_scaler.gz')
+
+print(f'Model values @ 0: {model_values[0]}')
+print(f'Target values @ 0: {target_values[0]}')
+print(f'Reloaded model values [unscaled] @ 0: {loaded_model(custom_input)}')
+print(f'Reloaded model values [scaled] @ 0: {target_scaler.inverse_transform(loaded_model(custom_input))}')
 
 
 def product_dict(**kwargs):

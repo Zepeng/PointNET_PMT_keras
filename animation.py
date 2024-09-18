@@ -4,6 +4,14 @@ import pandas as pd
 import json
 import matplotlib.animation as animation
 import functools
+import joblib
+
+FRAMES = 64
+fpga_batch_size = 64
+fpga_latency = 34099.11330 # from vitis, in ms
+fps_real = 1/(fpga_latency/fpga_batch_size/1000)
+print(fps_real)
+assert fps_real > 1 # should be at least 1 fps from what we've seen so far
 
 # load the pmt locations
 df = pd.read_csv('./data/pmt_xyz.dat', sep='\s+', header=None)
@@ -22,10 +30,25 @@ with open('./cgra/accuracy_test.json', 'r') as file:
 model_energies = np.array(model_values).T[3]
 target_energies = np.array(target_values).T[3]
 
-# now load the fpga output
-with open('./fpga output.json', 'r') as fp:
-    global fpga_vals
-    fpga_vals = json.load(fp)['vals']
+# # now load the fpga output
+# with open('./cgra/fpga output.json', 'r') as fp:
+#     global fpga_vals
+#     fpga_vals = json.load(fp)['vals']
+
+# load fpga outpu
+# import numpy as np
+
+df = pd.read_csv('./cgra/64_batch_output.csv')
+target_scaler = joblib.load('./cgra/target_scaler.gz')
+
+# clean data and reogranize
+print(df['output'])
+reshaped = np.array(df['output']).reshape(fpga_batch_size,4)/2**7 # divide since integer operationrs on fpga
+# print(reshaped)
+fpga_output_scaled = target_scaler.inverse_transform(reshaped)
+fpga_energies = fpga_output_scaled.T[3]
+# print(fpga_energies)
+# assert 0
 
 fig = plt.figure(figsize=plt.figaspect(0.5))
 model_ax = fig.add_subplot(1,2,1,projection='3d')
@@ -37,8 +60,8 @@ fpga_ax = fig.add_subplot(1,2,2,projection='3d')
 
 artists = []
 all_point_vals = np.reshape(np.array(X_vals), (64,2126,6))
-for i in range(32):
-    print(f'rendering frame {i}')
+for i in range(FRAMES):
+    print(f'Rendering vertex frame {i+1}')
     # _, _, hist_container = energy_ax.hist(np.array(model_values).T[3][:i])
     # print(type(model_ax.scatter(model_values[i][0], model_values[i][1], model_values[i][2])))
     # so we may have to animate the histogram seperately since it uses a collection of artists
@@ -51,7 +74,7 @@ for i in range(32):
             model_ax.scatter(model_values[i][0], model_values[i][1], model_values[i][2], label='Predicted', color='green'),
             model_ax.scatter(target_values[i][0], target_values[i][1], target_values[i][2], label='True', color='orange'),
             fpga_ax.scatter(pmts.T[0], pmts.T[1], pmts.T[2], alpha=0.1, color='green'),
-            fpga_ax.scatter(fpga_vals[i][0], fpga_vals[i][1], fpga_vals[i][2], color='red')
+            fpga_ax.scatter(fpga_output_scaled[i][0], fpga_output_scaled[i][1], fpga_output_scaled[i][2], color='red')
     ]
     # if i==0:
     #     to_append.append(model_ax.legend())
@@ -60,7 +83,7 @@ for i in range(32):
 # adapted from https://matplotlib.org/stable/gallery/animation/animated_histogram.html
 def animate(frame_number, bar_container):
     # print(model_energies[:frame_number+1])
-    n, _ = np.histogram(model_energies[:frame_number+1], np.linspace(-4,4,100))
+    n, _ = np.histogram(fpga_energies[:frame_number+1], np.linspace(-4,4,100))
     for count, rect in zip(n, bar_container.patches):
         rect.set_height(count)
     return bar_container.patches
@@ -69,14 +92,15 @@ def animate(frame_number, bar_container):
 spatial_ani = animation.ArtistAnimation(fig=fig, artists=artists)
 
 energy_fig, energy_ax = plt.subplots()
-_, _, bar_container = energy_ax.hist(model_energies, np.linspace(-4,4,100), color='red', histtype='step')
+_, _, bar_container = energy_ax.hist(target_energies[:FRAMES], np.linspace(-4,4,100), color='red', histtype='step')
 energy_ax.set_ylabel('Count')
 energy_ax.set_xlabel('Energy (MeV)')
 
 # try animating using artist animation now
 bar_artists = []
-for frame in range(len(model_energies)):
-    _, _, patches = energy_ax.hist(model_energies[:frame+1], np.linspace(-4,4,100), color='yellow')
+for frame in range(FRAMES):
+    print(f'Rendering energy frame {frame+1}')
+    _, _, patches = energy_ax.hist(fpga_energies[:frame+1], np.linspace(-4,4,100), color='yellow')
     bar_artists.append(patches)
 
 # energy_anim = functools.partial(animate, bar_container=bar_container)

@@ -48,8 +48,8 @@ sys_bits = SYS_BITS(x=8, k=8, b=16)
 NB_EPOCH = 2
 BATCH_SIZE = 64
 VALIDATION_SPLIT = 0.1
-TRAINING_EPOCHS = 10
-DEBUG = True
+TRAINING_EPOCHS = 50
+DEBUG = False
 training = True
 
 pmtxyz = get_pmtxyz("/home/amigala/PointNET_PMT_keras/data/pmt_xyz.dat")
@@ -85,6 +85,10 @@ print(y_tf)
 # print(tf.convert_to_tensor(y_tf))
 y_tf = target_scaler.fit_transform(y_tf)
 y_tf = tf.convert_to_tensor(y_tf)
+# need to dump this scaler so that it can be used later
+import joblib
+joblib.dump(target_scaler, 'target_scaler.gz')
+assert 0
 # print(y_tf)
 # assert 0
 
