@@ -50,9 +50,13 @@ fpga_energies = fpga_output_scaled.T[3]
 # print(fpga_energies)
 # assert 0
 
-fig = plt.figure(figsize=plt.figaspect(0.5))
+fig = plt.figure()
 model_ax = fig.add_subplot(1,2,1,projection='3d')
 fpga_ax = fig.add_subplot(1,2,2,projection='3d')
+fig.tight_layout(pad=0.15)
+
+model_ax.set_axis_off()
+fpga_ax.set_axis_off()
 # energy_ax = fig.add_subplot(1,3,3)
 
 # model_ax.scatter(pmts.T[0], pmts.T[1], pmts.T[2], alpha=0.1)
@@ -71,10 +75,11 @@ for i in range(FRAMES):
     point_vals = point_vals[:, np.where(point_vals[5, :] > 0)[0]] # may need to double check this line, but works for now
     to_append = [
             model_ax.scatter(point_vals[0], point_vals[1], point_vals[2], color='red', alpha=0.05),
-            model_ax.scatter(model_values[i][0], model_values[i][1], model_values[i][2], label='Predicted', color='green'),
-            model_ax.scatter(target_values[i][0], target_values[i][1], target_values[i][2], label='True', color='orange'),
-            fpga_ax.scatter(pmts.T[0], pmts.T[1], pmts.T[2], alpha=0.1, color='green'),
-            fpga_ax.scatter(fpga_output_scaled[i][0], fpga_output_scaled[i][1], fpga_output_scaled[i][2], color='red')
+            # model_ax.scatter(model_values[i][0], model_values[i][1], model_values[i][2], label='Predicted', color='green'),
+            # model_ax.scatter(target_values[i][0], target_values[i][1], target_values[i][2], label='True', color='orange'),
+            fpga_ax.scatter(pmts.T[0], pmts.T[1], pmts.T[2], alpha=0.1, color='blue'),
+            fpga_ax.scatter(fpga_output_scaled[i][0], fpga_output_scaled[i][1], fpga_output_scaled[i][2], color='red'),
+            fpga_ax.scatter(target_values[i][0], target_values[i][1], target_values[i][2], label='True', color='orange')
     ]
     # if i==0:
     #     to_append.append(model_ax.legend())
@@ -92,7 +97,7 @@ def animate(frame_number, bar_container):
 spatial_ani = animation.ArtistAnimation(fig=fig, artists=artists)
 
 energy_fig, energy_ax = plt.subplots()
-_, _, bar_container = energy_ax.hist(target_energies[:FRAMES], np.linspace(-4,4,100), color='red', histtype='step')
+_, _, bar_container = energy_ax.hist(target_energies[:FRAMES], np.linspace(0,4,15), color='purple', histtype='step')
 energy_ax.set_ylabel('Count')
 energy_ax.set_xlabel('Energy (MeV)')
 
@@ -100,14 +105,14 @@ energy_ax.set_xlabel('Energy (MeV)')
 bar_artists = []
 for frame in range(FRAMES):
     print(f'Rendering energy frame {frame+1}')
-    _, _, patches = energy_ax.hist(fpga_energies[:frame+1], np.linspace(-4,4,100), color='yellow')
+    _, _, patches = energy_ax.hist(fpga_energies[:frame+1], np.linspace(0,4,15), color='green')
     bar_artists.append(patches)
 
 # energy_anim = functools.partial(animate, bar_container=bar_container)
 # energy_ani = animation.FuncAnimation(energy_fig, energy_anim, 32, repeat=True, blit=True)
 energy_ani = animation.ArtistAnimation(fig=energy_fig, artists=bar_artists)
 
-writer = animation.PillowWriter(fps=2)
+writer = animation.PillowWriter(fps=fps_real)
 
 spatial_ani.save('scatter.gif', writer=writer)
 energy_ani.save('energy.gif', writer=writer)
