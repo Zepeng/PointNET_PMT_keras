@@ -12,12 +12,13 @@ from keras.optimizers import Adam
 from keras.utils import to_categorical
 from qkeras.utils import load_qmodel
 import numpy as np
+import optuna
 import pprint
 #from read_point_cloud import * 
 #from preprocess import *
 import tensorflow as tf
 #tf.keras.utils.set_random_seed(0)
-import wandb
+#import wandb
 from tqdm import tqdm
 from time import time
 from PointNet_merge import *
@@ -88,7 +89,6 @@ y_tf = tf.convert_to_tensor(y_tf)
 # need to dump this scaler so that it can be used later
 import joblib
 joblib.dump(target_scaler, 'target_scaler.gz')
-assert 0
 # print(y_tf)
 # assert 0
 
