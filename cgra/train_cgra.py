@@ -17,7 +17,7 @@ import pprint
 #from preprocess import *
 import tensorflow as tf
 #tf.keras.utils.set_random_seed(0)
-import wandb
+#import wandb
 from tqdm import tqdm
 from time import time
 from PointNet_merge import *
@@ -30,6 +30,9 @@ import matplotlib
 import pickle
 matplotlib.rc('xtick', labelsize=15)
 matplotlib.rc('ytick', labelsize=15)
+
+#Avi added code
+import optuna
 
 (SIM, SIM_PATH) = ('xsim', "F:/Xilinx/Vivado/2022.2/bin/") if os.name=='nt' else ('verilator', '')
 np.random.seed(42)
@@ -44,24 +47,132 @@ Dataset
 Define Model
 '''
 
-sys_bits = SYS_BITS(x=8, k=8, b=16)
+def objective(trial):
+    # Suggest a value for `x` among the specified choices
+    x = trial.suggest_categorical("x", [2, 4, 8])
+    k = 8
+    b = 16
+    
+    # Define the system bits with Optuna-suggested values
+    sys_bits = SYS_BITS(x=x, k=k, b=b)
+    
+    # Instantiate and prepare the model
+    model = UserModel(sys_bits=sys_bits, x_int_bits=0)
+    optimizer = tf.keras.optimizers.Adam(learning_rate=1e-3)
+    
+    # Data preparation
+    data_npz = np.load('/home/amehta/PointNET_PMT_keras/data/train_X_y_ver_all_xyz_energy.npz')
+    X_tf = tf.convert_to_tensor(data_npz['X'], dtype=tf.float32)
+    y_tf = tf.convert_to_tensor(data_npz['y'], dtype=tf.float32)
+    BATCH_SIZE = 64
+    TRAINING_EPOCHS = 2
+    
+    # Define and scale data as per the original script
+    new_X = preprocess_features(X_tf)
+    target_scaler = MinMaxScaler((-1, 1))
+    y_tf = tf.convert_to_tensor(target_scaler.fit_transform(y_tf))
+    
+    # Split the data for training and validation
+    train_split = 0.7
+    train_idx = int(new_X.shape[0] * train_split)
+    val_idx = int(train_idx + new_X.shape[0] * train_split)
+    train_loader = tf.data.Dataset.from_tensor_slices((new_X[:train_idx], y_tf[:train_idx])).shuffle(buffer_size=len(new_X)).batch(BATCH_SIZE)
+    val_loader = tf.data.Dataset.from_tensor_slices((new_X[train_idx:val_idx], y_tf[train_idx:val_idx])).batch(BATCH_SIZE)
+
+    val = tf.data.Dataset.from_tensor_slices((new_X[train_idx:val_idx], y_tf[train_idx:val_idx]))
+
+    test = tf.data.Dataset.from_tensor_slices((new_X[val_idx:], y_tf[val_idx:]))
+    train_loader = train.shuffle(buffer_size=len(new_X)).batch(BATCH_SIZE)
+    val_loader = val.batch(BATCH_SIZE)
+    test_loader = val.batch(BATCH_SIZE)
+    print(f"num. total: {len(new_X)} train: {len(train)}, val: {len(val)}, test: {len(test)}")
+    print(pmtxyz.shape, tf.shape(new_X), y_tf.shape)
+
+    # input_shape = (2126, 1, 6)#X_tf.shape[1:]
+    # n_hits, _, F_dim = input_shape#X_tf.shape
+    n_data, _, F_dim = X_tf.shape
+
+    dim = F_dim
+    dim_reduce_factor = 2
+    out_dim = y_tf.shape[-1] # 4
+    dimensions = dim
+    nhits = 2126
+    encoder_input_shapes = [dimensions, 64, int(128 / dim_reduce_factor)]
+    (_, F1, F2), latent_dim = encoder_input_shapes, int(1024 / dim_reduce_factor)
+    decoder_input_shapes = latent_dim, int(512/dim_reduce_factor), int(128/dim_reduce_factor)
+    latent_dim, F3, F4 = decoder_input_shapes
+    print("Test", F1, F2, dim, dim_reduce_factor, out_dim, dimensions)
+
+    input_shape = X_tf.shape[1:]
+    # (pmtxyz.shape[0], tf.shape(new_X)[2])
+    # (pmtxyz.shape[0], 1, tf.shape(new_X)[2])
+    # print(tf.shape(new_X)[2])
+    x = x_in =  Input((pmtxyz.shape[0], 1, 6), name="input")
+    user_model = UserModel(sys_bits=sys_bits, x_int_bits=0)
+    x = user_model(x_in)
+
+    model = Model(inputs=[x_in], outputs=[x])
+    
+    # Training loop
+    pbar = tqdm(total=TRAINING_EPOCHS, mininterval=10)
+    total_train_loss = []
+
+    for epoch in range(TRAINING_EPOCHS):
+        total_loss = 0  # Reset total loss for each epoch
+        
+        for i, batch in enumerate(train_loader):
+            X, y = batch
+            try:
+                X = tf.convert_to_tensor(X.numpy().reshape((BATCH_SIZE, 2126, 1, 6)))
+            except ValueError:
+                print("skipping batch due to incompatible size")
+                break
+
+            # Forward pass and loss computation
+            with tf.GradientTape() as tape:
+                out = model(X)
+                loss = tf.reduce_mean(tf.keras.losses.MSE(out, y))
+
+            # Perform inverse transformation every 100 batches for logging purposes
+            if i % 100 == 0:
+                out = tf.convert_to_tensor(target_scaler.inverse_transform(out.numpy()))
+                y = tf.convert_to_tensor(target_scaler.inverse_transform(y.numpy()))
+                print(f"Batch {i}, Inverse Scaled Output: {out}, Inverse Scaled Target: {y}")
+
+            gradients = tape.gradient(loss, model.trainable_variables)
+            optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+            
+            total_loss += loss.numpy()
+
+        # Calculate and log the average training loss for the epoch
+        total_loss /= len(train_loader)
+        total_train_loss.append(total_loss)
+        pbar.update(1)
+        print(f"Epoch {epoch + 1}, Average Loss: {total_loss}")
+    
+    pbar.close()
+    
+    # Return the minimum epoch loss as the objective value
+    return total_train_loss[-1]
+
+# sys_bits = SYS_BITS(x=8, k=8, b=16)
 NB_EPOCH = 2
 BATCH_SIZE = 64
 VALIDATION_SPLIT = 0.1
-TRAINING_EPOCHS = 50
+TRAINING_EPOCHS = 2 #Change epochs to 30 if training takes too long
 DEBUG = False
 training = True
 
-pmtxyz = get_pmtxyz("/home/amigala/PointNET_PMT_keras/data/pmt_xyz.dat")
-data_npz = np.load('/home/amigala/PointNET_PMT_keras/data/train_X_y_ver_all_xyz_energy.npz')
-X_tf = tf.convert_to_tensor(data_npz['X'], dtype=tf.float32)
-y_tf = tf.convert_to_tensor(data_npz['y'], dtype=tf.float32)
-if DEBUG:
-    small = 5000
-    X_tf, y_tf = X_tf[:small], y_tf[:small]
+pmtxyz = get_pmtxyz("/home/amehta/PointNET_PMT_keras/data/pmt_xyz.dat")
+data_npz = np.load('/home/amehta/PointNET_PMT_keras/data/train_X_y_ver_all_xyz_energy.npz')
+# X_tf = tf.convert_to_tensor(data_npz['X'], dtype=tf.float32)
+# y_tf = tf.convert_to_tensor(data_npz['y'], dtype=tf.float32)
+# if DEBUG:
+#     small = 5000
+#     X_tf, y_tf = X_tf[:small], y_tf[:small]
 
-new_X = preprocess_features(X_tf)
-print(X_tf.shape)
+# new_X = preprocess_features(X_tf)
+# print(X_tf.shape)
 
 # min/max scale the training data and the target data using their own scalers
 # training_scaler = MinMaxScaler((-1,1))
@@ -78,25 +189,24 @@ target_scaler = MinMaxScaler((-1,1))
 # print(y_tf.shape)
 # y_tf_original_shape = y_tf.shape
 # y_tf = y_tf.numpy().reshape(y_tf.shape[0], y_tf.shape[1]*y_tf.shape[2])
-print(y_tf.shape)
-print(y_tf)
+# print(y_tf.shape)
+# print(y_tf)
 # y_tf = y_tf.numpy()
 # y_tf[:,3] *= 160 # scale the energy by 160 before fitting
 # print(tf.convert_to_tensor(y_tf))
-y_tf = target_scaler.fit_transform(y_tf)
-y_tf = tf.convert_to_tensor(y_tf)
+# y_tf = target_scaler.fit_transform(y_tf)
+# y_tf = tf.convert_to_tensor(y_tf)
 # need to dump this scaler so that it can be used later
 import joblib
 joblib.dump(target_scaler, 'target_scaler.gz')
-assert 0
 # print(y_tf)
 # assert 0
 
-train_split = 0.7
-val_split = 0.3
-train_idx = int(new_X.shape[0] * train_split)
-val_idx = int(train_idx + new_X.shape[0] * train_split)
-train = tf.data.Dataset.from_tensor_slices((new_X[:train_idx], y_tf[:train_idx]))
+# train_split = 0.7
+# val_split = 0.3
+# train_idx = int(new_X.shape[0] * train_split)
+# val_idx = int(train_idx + new_X.shape[0] * train_split)
+# train = tf.data.Dataset.from_tensor_slices((new_X[:train_idx], y_tf[:train_idx]))
 val = tf.data.Dataset.from_tensor_slices((new_X[train_idx:val_idx], y_tf[train_idx:val_idx]))
 test = tf.data.Dataset.from_tensor_slices((new_X[val_idx:], y_tf[val_idx:]))
 train_loader = train.shuffle(buffer_size=len(new_X)).batch(BATCH_SIZE)
@@ -238,7 +348,7 @@ model = Model(inputs=[x_in], outputs=[x])
 '''
 Summarize model
 '''
-print(model.submodules)
+#print(model.submodules)
 #print(y[:5], model(X_tf[:5]))
 for layer in model.submodules:
     try:
@@ -259,6 +369,17 @@ def summary_plus(layer, i=0):
 
 print(summary_plus(model)) # OK 
 model.summary(expand_nested=True)
+
+study = optuna.create_study(direction="minimize")
+study.optimize(objective, n_trials=3)
+
+# Print the best trial
+print("Best trial:")
+trial = study.best_trial
+print(f"Value (Min Loss): {trial.value}")
+print("Params:")
+for key, value in trial.params.items():
+    print(f"    {key}: {value}")
 # assert 0
 
 # '''
@@ -279,10 +400,10 @@ model.summary(expand_nested=True)
 Train
 '''
 
-optimizer = tf.keras.optimizers.Adam(learning_rate=1e-3, beta_1=0.9, beta_2=0.999, epsilon=1e-07, amsgrad=False)
-epochs = range(TRAINING_EPOCHS)
+# optimizer = tf.keras.optimizers.Adam(learning_rate=1e-3, beta_1=0.9, beta_2=0.999, epsilon=1e-07, amsgrad=False)
+# epochs = range(TRAINING_EPOCHS)
 #model.compile(optimizer=optimizer, loss=tf.keras.losses.MeanSquaredError())
-model.compile(optimizer=optimizer, loss='mse', metrics=['mse'])
+# model.compile(optimizer=optimizer, loss='mse', metrics=['mse'])
 
 ## Train Loop
 # wandb.login()
@@ -297,375 +418,376 @@ model.compile(optimizer=optimizer, loss='mse', metrics=['mse'])
 # )
 
 # Initialize tqdm progress bar
-if training:
-    pbar = tqdm(total=TRAINING_EPOCHS, mininterval=10)
-    # Initialize best validation loss and best train loss
-    best_val, best_train = float("inf"), float("inf")
-    tot_train_lst = []
+# if training:
+#     pbar = tqdm(total=TRAINING_EPOCHS, mininterval=10)
+#     # Initialize best validation loss and best train loss
+#     best_val, best_train = float("inf"), float("inf")
+#     tot_train_lst = []
 
-    # Loop through epochs
-    for epoch in range(TRAINING_EPOCHS):
-        total_loss = 0
+#     # Loop through epochs
+#     for epoch in range(TRAINING_EPOCHS):
+#         total_loss = 0
         
-        # Loop through batches in training loader
-        for i, batch in enumerate(train_loader):
-            X, y = batch
-            try:
-                X = tf.convert_to_tensor(X.numpy().reshape((BATCH_SIZE, 2126, 1, 6)))
-            except ValueError:
-                print("skipping batch due to incompatible size")
-                break
-            # for some reason, this reshape can't always work (i'm guessing it's an issue at the
-            # end of the data set where there is less than a batch's worth of data)
+#         # Loop through batches in training loader
+#         for i, batch in enumerate(train_loader):
+#             X, y = batch
+#             try:
+#                 X = tf.convert_to_tensor(X.numpy().reshape((BATCH_SIZE, 2126, 1, 6)))
+#             except ValueError:
+#                 print("skipping batch due to incompatible size")
+#                 break
+#             # for some reason, this reshape can't always work (i'm guessing it's an issue at the
+#             # end of the data set where there is less than a batch's worth of data)
             
-            # Forward 
-            index = 0
-            with tf.GradientTape() as tape:
-                # need to reshape data here to bypass training issues
-                # print(X.shape)
-                # assert 0
-                out = model(X)
-                # print(out)
-                # print(out.shape)
-                energy_mult = 160  # scale energy loss
-                # Scale the last dimension of 'out' and 'y' tensors
-                # out = tf.convert_to_tensor(target_scaler.inverse_transform(out.numpy()))
-                # y = tf.convert_to_tensor(target_scaler.inverse_transform(y.numpy()))
-                # # print(out.shape)
-                # # print(y.shape)
+#             # Forward 
+#             index = 0
+#             with tf.GradientTape() as tape:
+#                 # need to reshape data here to bypass training issues
+#                 # print(X.shape)
+#                 # assert 0
+#                 out = model(X)
+#                 # print(out)
+#                 # print(out.shape)
+#                 energy_mult = 160  # scale energy loss
+#                 # Scale the last dimension of 'out' and 'y' tensors
+#                 # out = tf.convert_to_tensor(target_scaler.inverse_transform(out.numpy()))
+#                 # y = tf.convert_to_tensor(target_scaler.inverse_transform(y.numpy()))
+#                 # # print(out.shape)
+#                 # # print(y.shape)
 
-                # out = tf.concat([out[:, :-1], energy_mult * tf.expand_dims(out[:, -1], axis=-1)], axis=-1)
-                # y = tf.concat([y[:, :-1], energy_mult * tf.expand_dims(y[:, -1], axis=-1)], axis=-1)
-                # # print(f'Output from one pass: {out.numpy()}\n y_true: {y.numpy()}')
-                # # assert 0
-                # out = tf.convert_to_tensor(target_scaler.transform(out.numpy()))
-                # y = tf.convert_to_tensor(target_scaler.transform(y.numpy()))
+#                 # out = tf.concat([out[:, :-1], energy_mult * tf.expand_dims(out[:, -1], axis=-1)], axis=-1)
+#                 # y = tf.concat([y[:, :-1], energy_mult * tf.expand_dims(y[:, -1], axis=-1)], axis=-1)
+#                 # # print(f'Output from one pass: {out.numpy()}\n y_true: {y.numpy()}')
+#                 # # assert 0
+#                 # out = tf.convert_to_tensor(target_scaler.transform(out.numpy()))
+#                 # y = tf.convert_to_tensor(target_scaler.transform(y.numpy()))
 
-                #out[:, -1], y[:, -1] = energy_mult * out[:, -1], energy_mult * y[:, -1]
-                loss = tf.reduce_mean(tf.keras.losses.MSE(out, y))
-                if index % 100 == 0:
-                    out = tf.convert_to_tensor(target_scaler.inverse_transform(out.numpy()))
-                    y = tf.convert_to_tensor(target_scaler.inverse_transform(y.numpy()))
-                    # print(out)
-                    # print(y)
-                # print(type(loss))
-                # assert 0
+#                 #out[:, -1], y[:, -1] = energy_mult * out[:, -1], energy_mult * y[:, -1]
+#                 loss = tf.reduce_mean(tf.keras.losses.MSE(out, y))
+#                 if index % 100 == 0:
+#                     out = tf.convert_to_tensor(target_scaler.inverse_transform(out.numpy()))
+#                     y = tf.convert_to_tensor(target_scaler.inverse_transform(y.numpy()))
+#                     # print(out)
+#                     # print(y)
+#                 # print(type(loss))
+#                 # assert 0
             
-            # Calculate gradients and update weights
-            gradients = tape.gradient(loss, model.trainable_variables)
-            optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+#             # Calculate gradients and update weights
+#             gradients = tape.gradient(loss, model.trainable_variables)
+#             optimizer.apply_gradients(zip(gradients, model.trainable_variables))
             
-            # Log loss
-            total_loss += loss.numpy()
+#             # Log loss
+#             total_loss += loss.numpy()
         
-        # Calculate average training loss for the epoch
-        total_loss /= len(train_loader)
-        # wandb.log({"Loss":total_loss})
-        tot_train_lst.append(total_loss)
-        pbar.update(1)
-        print(total_loss)
+#         # Calculate average training loss for the epoch
+#         total_loss /= len(train_loader)
+#         # wandb.log({"Loss":total_loss})
+#         tot_train_lst.append(total_loss)
+#         pbar.update(1)
+#         print(total_loss)
         
-        # Adjust learning rate based on training loss
-        #prev_lr = optimizer.learning_rate.numpy()
-        #reduce_lr.on_epoch_end(epoch, logs={'loss': total_loss})
-        #scheduler.step(total_loss)
+#         # Adjust learning rate based on training loss
+#         #prev_lr = optimizer.learning_rate.numpy()
+#         #reduce_lr.on_epoch_end(epoch, logs={'loss': total_loss})
+#         #scheduler.step(total_loss)
         
-        # Validation every 10 epochs or last epoch
-        # if epoch == TRAINING_EPOCHS - 1:
-        #     total_val_loss = 0
+#         # Validation every 10 epochs or last epoch
+#         # if epoch == TRAINING_EPOCHS - 1:
+#         #     total_val_loss = 0
             
-        #     # Validation (evaluation mode)
-        #     for batch in val_loader:
-        #         X, y = batch
-        #         out = model(X)
-        #         val_loss = tf.reduce_mean(tf.keras.losses.MSE(out, y))
-        #         total_val_loss += val_loss.numpy()
+#         #     # Validation (evaluation mode)
+#         #     for batch in val_loader:
+#         #         X, y = batch
+#         #         out = model(X)
+#         #         val_loss = tf.reduce_mean(tf.keras.losses.MSE(out, y))
+#         #         total_val_loss += val_loss.numpy()
             
-        #     # Calculate average validation loss
-        #     total_val_loss /= len(val_loader)
+#         #     # Calculate average validation loss
+#         #     total_val_loss /= len(val_loader)
             
-        #     # Update progress bar
-        #     # pbar.update(10)
+#         #     # Update progress bar
+#         #     # pbar.update(10)
             
-        #     # Save best model based on validation loss
-        #     if total_val_loss < best_val:
-        #         best_val = total_val_loss
-        #         if args.save_best:
-        #             model.save(save_name + ".keras")
+#         #     # Save best model based on validation loss
+#         #     if total_val_loss < best_val:
+#         #         best_val = total_val_loss
+#         #         if args.save_best:
+#         #             model.save(save_name + ".keras")
         
-        # Log training loss
-        # else:
-            # print(total_loss)
+#         # Log training loss
+#         # else:
+#             # print(total_loss)
         
-    # Close progress bar
-    pbar.close()
+#     # Close progress bar
+#     pbar.close()
 
-    min_train = round(min(tot_train_lst), 2)
-    min_values = {
-            "min_train": min_train,
-            "min_val": best_val,
-    }
+#     min_train = round(min(tot_train_lst), 2)
+#     min_values = {
+#             "min_train": min_train,
+#             "min_val": best_val,
+#     }
 
-    diff = {"x":[], "y":[], "z":[], "radius": [], "unif_r":[], "energy":[]}
-    dist = {"x":[], "y":[], "z":[], "x_pred":[], "y_pred":[], "z_pred":[], "energy":[], "energy_pred":[],
-            "radius": [], "radius_pred": [], "unif_r": [], "unif_r_pred": []}
-    abs_diff = []
-    #if args.train_mode:
-    #    model.train()
-    #else:
-    print('Model eval')
-    scale_factor = 1#25.
-    collect_export_values = True
+#     diff = {"x":[], "y":[], "z":[], "radius": [], "unif_r":[], "energy":[]}
+#     dist = {"x":[], "y":[], "z":[], "x_pred":[], "y_pred":[], "z_pred":[], "energy":[], "energy_pred":[],
+#             "radius": [], "radius_pred": [], "unif_r": [], "unif_r_pred": []}
+#     abs_diff = []
+#     #if args.train_mode:
+#     #    model.train()
+#     #else:
+#     print('Model eval')
+#     scale_factor = 1#25.
+#     collect_export_values = True
 
-    with tqdm(total=len(val_loader), mininterval=5) as pbar:
-        total_val_loss = 0
+#     with tqdm(total=len(val_loader), mininterval=5) as pbar:
+#         total_val_loss = 0
 
-        for i, batch in enumerate(val_loader):
-            X, y = batch
-            print(f"Collecting values for hardware accuracy test: {collect_export_values}")
-            try:
-                X = tf.convert_to_tensor(X.numpy().reshape((BATCH_SIZE, 2126, 1, 6)))
-                if collect_export_values:
-                    global deploy_val_X
-                    deploy_val_X = X
+#         for i, batch in enumerate(val_loader):
+#             X, y = batch
+#             print(f"Collecting values for hardware accuracy test: {collect_export_values}")
+#             try:
+#                 X = tf.convert_to_tensor(X.numpy().reshape((BATCH_SIZE, 2126, 1, 6)))
+#                 if collect_export_values:
+#                     global deploy_val_X
+#                     deploy_val_X = X
 
-                    with open(f'X.pickle', 'wb') as handle:
-                        pickle.dump(X.numpy(), handle, protocol=pickle.HIGHEST_PROTOCOL)
-            except ValueError:
-                print("skipping batch due to incompatible size")
-                break
-            out = model(X)
-            # do inverse transform on data
-            # new_shape = out.shape
-            # print(X.shape)
-            # print(out.shape)
-            # print(y.shape)
-            out = tf.convert_to_tensor(target_scaler.inverse_transform(out))
-            y = tf.convert_to_tensor(target_scaler.inverse_transform(y))
-            if collect_export_values:
-                global deploy_val_model
-                global deploy_val_Y_truth
+#                     with open(f'X.pickle', 'wb') as handle:
+#                         pickle.dump(X.numpy(), handle, protocol=pickle.HIGHEST_PROTOCOL)
+#             except ValueError:
+#                 print("skipping batch due to incompatible size")
+#                 break
+#             out = model(X)
+#             # do inverse transform on data
+#             # new_shape = out.shape
+#             # print(X.shape)
+#             # print(out.shape)
+#             # print(y.shape)
+#             out = tf.convert_to_tensor(target_scaler.inverse_transform(out))
+#             y = tf.convert_to_tensor(target_scaler.inverse_transform(y))
+#             if collect_export_values:
+#                 global deploy_val_model
+#                 global deploy_val_Y_truth
 
-                deploy_val_model = out
-                deploy_val_Y_truth = y
-                collect_export_values = False
-                # now save these values
-                import json
-                with open("accuracy_test.json", 'w') as fp:
-                    json.dump({
-                        'model_value': out.numpy().tolist(),
-                        'target_value': y.numpy().tolist(),
-                        'X_vals': deploy_val_X.numpy().tolist()
-                    }, fp)
-            # print(out)
-            # print(y)
-            # assert 0
+#                 deploy_val_model = out
+#                 deploy_val_Y_truth = y
+#                 collect_export_values = False
+#                 # now save these values
+#                 import json
+#                 with open("accuracy_test.json", 'w') as fp:
+#                     json.dump({
+#                         'model_value': out.numpy().tolist(),
+#                         'target_value': y.numpy().tolist(),
+#                         'X_vals': deploy_val_X.numpy().tolist()
+#                     }, fp)
+#             # print(out)
+#             # print(y)
+#             # assert 0
 
-            abs_diff.append(tf.abs(y*scale_factor - out*scale_factor))
-            val_loss = tf.reduce_mean(tf.keras.losses.MSE(out, y))
-            total_val_loss += val_loss.numpy()
+#             abs_diff.append(tf.abs(y*scale_factor - out*scale_factor))
+#             val_loss = tf.reduce_mean(tf.keras.losses.MSE(out, y))
+#             total_val_loss += val_loss.numpy()
 
-            diff_tensor = (y - out)*scale_factor ## to vis. distribution
-            dist["x"].append(y[:, 0]*scale_factor)
-            dist["y"].append(y[:, 1]*scale_factor)
-            dist["z"].append(y[:, 2]*scale_factor)
+#             diff_tensor = (y - out)*scale_factor ## to vis. distribution
+#             dist["x"].append(y[:, 0]*scale_factor)
+#             dist["y"].append(y[:, 1]*scale_factor)
+#             dist["z"].append(y[:, 2]*scale_factor)
 
-            dist["x_pred"].append(out[:, 0]*scale_factor)
-            dist["y_pred"].append(out[:, 1]*scale_factor)
-            dist["z_pred"].append(out[:, 2]*scale_factor)
+#             dist["x_pred"].append(out[:, 0]*scale_factor)
+#             dist["y_pred"].append(out[:, 1]*scale_factor)
+#             dist["z_pred"].append(out[:, 2]*scale_factor)
             
-            diff["x"].append(diff_tensor[:, 0])
-            diff["y"].append(diff_tensor[:, 1])
-            diff["z"].append(diff_tensor[:, 2])
+#             diff["x"].append(diff_tensor[:, 0])
+#             diff["y"].append(diff_tensor[:, 1])
+#             diff["z"].append(diff_tensor[:, 2])
 
-            dist["energy"].append(y[:, 3]*scale_factor)
-            dist["energy_pred"].append(out[:, 3]*scale_factor)
-            diff["energy"].append(diff_tensor[:, 3])
+#             dist["energy"].append(y[:, 3]*scale_factor)
+#             dist["energy_pred"].append(out[:, 3]*scale_factor)
+#             diff["energy"].append(diff_tensor[:, 3])
 
-            pbar.update()
-        total_val_loss /= len(val_loader)
+#             pbar.update()
+#         total_val_loss /= len(val_loader)
 
-    abs_diff = tf.concat(abs_diff, axis=0)
+#     abs_diff = tf.concat(abs_diff, axis=0)
 
-    ## plot and save
+#     ## plot and save
 
-    # plot_reg(diff=diff, dist=dist, total_val_loss=total_val_loss, abs_diff=abs_diff, save_name=save_name, args=args)
-    # if args.xyz_energy:
-    abs_x_diff, abs_y_diff, abs_z_diff, abs_energy_diff = tf.reduce_mean(abs_diff, axis=0)
-    energy_diff = tf.concat(diff["energy"], axis=0).cpu()
-    energy_pred = tf.concat(dist["energy_pred"], axis=0).cpu()
-    energy = tf.concat(dist["energy"], axis=0).cpu()
-    # else:
-    #     abs_x_diff, abs_y_diff, abs_z_diff = tf.reduce_mean(abs_diff, axis=0)
+#     # plot_reg(diff=diff, dist=dist, total_val_loss=total_val_loss, abs_diff=abs_diff, save_name=save_name, args=args)
+#     # if args.xyz_energy:
+#     abs_x_diff, abs_y_diff, abs_z_diff, abs_energy_diff = tf.reduce_mean(abs_diff, axis=0)
+#     energy_diff = tf.concat(diff["energy"], axis=0).cpu()
+#     energy_pred = tf.concat(dist["energy_pred"], axis=0).cpu()
+#     energy = tf.concat(dist["energy"], axis=0).cpu()
+#     # else:
+#     #     abs_x_diff, abs_y_diff, abs_z_diff = tf.reduce_mean(abs_diff, axis=0)
 
-    x_diff = tf.concat(diff["x"], axis=0).cpu()
-    y_diff = tf.concat(diff["y"], axis=0).cpu()
-    z_diff = tf.concat(diff["z"], axis=0).cpu()
+#     x_diff = tf.concat(diff["x"], axis=0).cpu()
+#     y_diff = tf.concat(diff["y"], axis=0).cpu()
+#     z_diff = tf.concat(diff["z"], axis=0).cpu()
 
-    x_pred = tf.concat(dist["x_pred"], axis=0).cpu()
-    y_pred = tf.concat(dist["y_pred"], axis=0).cpu()
-    z_pred = tf.concat(dist["z_pred"], axis=0).cpu()
+#     x_pred = tf.concat(dist["x_pred"], axis=0).cpu()
+#     y_pred = tf.concat(dist["y_pred"], axis=0).cpu()
+#     z_pred = tf.concat(dist["z_pred"], axis=0).cpu()
 
-    x = tf.concat(dist["x"], axis=0).cpu()
-    y = tf.concat(dist["y"], axis=0).cpu()
-    z = tf.concat(dist["z"], axis=0).cpu()
+#     x = tf.concat(dist["x"], axis=0).cpu()
+#     y = tf.concat(dist["y"], axis=0).cpu()
+#     z = tf.concat(dist["z"], axis=0).cpu()
 
-    # create save data
-    val_save_data = {
-        'abs_x_diff': abs_x_diff.numpy(),
-        'abs_y_diff': abs_y_diff.numpy(),
-        'abs_z_diff': abs_z_diff.numpy(),
-        'abs_energy_diff': abs_energy_diff.numpy(),
-        'energy_diff': energy_diff.numpy(),
-        'energy_pred': energy_pred.numpy(),
-        'energy': energy.numpy(),
-        'x_diff': x_diff.numpy(),
-        'y_diff': y_diff.numpy(),
-        'z_diff': z_diff.numpy(),
-        'x_pred': x_pred.numpy(),
-        'y_pred': y_pred.numpy(),
-        'z_pred': z_pred.numpy(),
-        'x': x.numpy(),
-        'y': y.numpy(),
-        'z': z.numpy(),
-        'total_val_loss': total_val_loss
-    }
+#     # create save data
+#     val_save_data = {
+#         'abs_x_diff': abs_x_diff.numpy(),
+#         'abs_y_diff': abs_y_diff.numpy(),
+#         'abs_z_diff': abs_z_diff.numpy(),
+#         'abs_energy_diff': abs_energy_diff.numpy(),
+#         'energy_diff': energy_diff.numpy(),
+#         'energy_pred': energy_pred.numpy(),
+#         'energy': energy.numpy(),
+#         'x_diff': x_diff.numpy(),
+#         'y_diff': y_diff.numpy(),
+#         'z_diff': z_diff.numpy(),
+#         'x_pred': x_pred.numpy(),
+#         'y_pred': y_pred.numpy(),
+#         'z_pred': z_pred.numpy(),
+#         'x': x.numpy(),
+#         'y': y.numpy(),
+#         'z': z.numpy(),
+#         'total_val_loss': total_val_loss
+#     }
 
-    with open(f'cgra_pointnet.pickle', 'wb') as handle:
-        pickle.dump(val_save_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+#     with open(f'cgra_pointnet.pickle', 'wb') as handle:
+#         pickle.dump(val_save_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-    plt.close()
-    fig, axes = plt.subplots(nrows=2, ncols=4, figsize=(20, 15))
-    # plt.subplots_adjust(wspace=0.2)
-    fig.suptitle(f"Val. MSE: {total_val_loss:.2f} (MSE(x) + MSE(y) + MSE(y) + MSE(energy))\n\
-    Avg. abs. diff. in x={abs_x_diff:.2f}, y={abs_y_diff:.2f}, z={abs_z_diff:.2f}, energy={abs_energy_diff:.2f}", fontsize=20)
-    # else:
-    #     fig, axes = plt.subplots(nrows=2, ncols=3, figsize=(20, 10))
-    #     fig.suptitle(f"Val. MSE: {total_val_loss:.2f} (MSE(x) + MSE(y) + MSE(y))\n\
-    #     Avg. abs. diff. in x={abs_x_diff:.2f}, y={abs_y_diff:.2f}, z={abs_z_diff:.2f}")
+#     plt.close()
+#     fig, axes = plt.subplots(nrows=2, ncols=4, figsize=(20, 15))
+#     # plt.subplots_adjust(wspace=0.2)
+#     fig.suptitle(f"Val. MSE: {total_val_loss:.2f} (MSE(x) + MSE(y) + MSE(y) + MSE(energy))\n\
+#     Avg. abs. diff. in x={abs_x_diff:.2f}, y={abs_y_diff:.2f}, z={abs_z_diff:.2f}, energy={abs_energy_diff:.2f}", fontsize=20)
+#     # else:
+#     #     fig, axes = plt.subplots(nrows=2, ncols=3, figsize=(20, 10))
+#     #     fig.suptitle(f"Val. MSE: {total_val_loss:.2f} (MSE(x) + MSE(y) + MSE(y))\n\
+#     #     Avg. abs. diff. in x={abs_x_diff:.2f}, y={abs_y_diff:.2f}, z={abs_z_diff:.2f}")
 
-    ## diff. plots
-    x_diff_range = (-50, 50)
-    large_fontsize = 20
-    axes[0,0].hist(x_diff, bins=20, range=x_diff_range, edgecolor='black')
-    axes[0,0].set_title(r"x_diff ($x - \hat{x}$)", fontsize=large_fontsize)
-    axes[0,0].set_xlabel('x diff', fontsize=large_fontsize)
-    axes[0,0].set_ylabel('Probability', fontsize=large_fontsize)
+#     ## diff. plots
+#     x_diff_range = (-50, 50)
+#     large_fontsize = 20
+#     axes[0,0].hist(x_diff, bins=20, range=x_diff_range, edgecolor='black')
+#     axes[0,0].set_title(r"x_diff ($x - \hat{x}$)", fontsize=large_fontsize)
+#     axes[0,0].set_xlabel('x diff', fontsize=large_fontsize)
+#     axes[0,0].set_ylabel('Probability', fontsize=large_fontsize)
 
-    y_diff_range = (-50, 50)
-    axes[0,1].hist(y_diff, bins=20, range=y_diff_range, edgecolor='black')
-    axes[0,1].set_title(r"y_diff ($y - \hat{y}$)", fontsize=large_fontsize)
-    axes[0,1].set_xlabel('y diff', fontsize=large_fontsize)
-    # axes[0,1].set_ylabel('freq', fontsize=large_fontsize)
+#     y_diff_range = (-50, 50)
+#     axes[0,1].hist(y_diff, bins=20, range=y_diff_range, edgecolor='black')
+#     axes[0,1].set_title(r"y_diff ($y - \hat{y}$)", fontsize=large_fontsize)
+#     axes[0,1].set_xlabel('y diff', fontsize=large_fontsize)
+#     # axes[0,1].set_ylabel('freq', fontsize=large_fontsize)
 
-    z_diff_range = (-50, 50)
-    axes[0,2].hist(z_diff, bins=20, range=z_diff_range, edgecolor='black')
-    axes[0,2].set_title(r"z_diff ($z - \hat{z}$)", fontsize=large_fontsize)
-    axes[0,2].set_xlabel('z diff', fontsize=large_fontsize)
-    # axes[0,2].set_ylabel('freq', fontsize=large_fontsize)
+#     z_diff_range = (-50, 50)
+#     axes[0,2].hist(z_diff, bins=20, range=z_diff_range, edgecolor='black')
+#     axes[0,2].set_title(r"z_diff ($z - \hat{z}$)", fontsize=large_fontsize)
+#     axes[0,2].set_xlabel('z diff', fontsize=large_fontsize)
+#     # axes[0,2].set_ylabel('freq', fontsize=large_fontsize)
 
-    energy_diff_range = (0, 1)
-    axes[0,3].hist(energy_diff, bins=20, range=energy_diff_range, edgecolor='black')
-    axes[0,3].set_title(r"energy_diff ($energy - \hat{energy}$)", fontsize=large_fontsize)
-    axes[0,3].set_xlabel('energy diff', fontsize=large_fontsize)
-    # axes[0,3].set_ylabel('freq', fontsize=large_fontsize)
+#     energy_diff_range = (0, 1)
+#     axes[0,3].hist(energy_diff, bins=20, range=energy_diff_range, edgecolor='black')
+#     axes[0,3].set_title(r"energy_diff ($energy - \hat{energy}$)", fontsize=large_fontsize)
+#     axes[0,3].set_xlabel('energy diff', fontsize=large_fontsize)
+#     # axes[0,3].set_ylabel('freq', fontsize=large_fontsize)
 
-    ## dist. plots
-    x_range = (-250, 250)
-    axes[1,0].hist(x, bins=20, range=x_range, edgecolor='black', label="x")
-    axes[1,0].hist(x_pred, bins=20, range=x_range, edgecolor='blue', label=r'$\hat{x}$', alpha=0.5)
-    axes[1,0].set_title("x dist", fontsize=large_fontsize)
-    axes[1,0].set_xlabel('x (cm)', fontsize=large_fontsize)
-    axes[1,0].set_ylabel('Probability', fontsize=large_fontsize)
+#     ## dist. plots
+#     x_range = (-250, 250)
+#     axes[1,0].hist(x, bins=20, range=x_range, edgecolor='black', label="x")
+#     axes[1,0].hist(x_pred, bins=20, range=x_range, edgecolor='blue', label=r'$\hat{x}$', alpha=0.5)
+#     axes[1,0].set_title("x dist", fontsize=large_fontsize)
+#     axes[1,0].set_xlabel('x (cm)', fontsize=large_fontsize)
+#     axes[1,0].set_ylabel('Probability', fontsize=large_fontsize)
 
-    y_range = (-250, 250)
-    axes[1,1].hist(y, bins=20, range=y_range, edgecolor='black', label="y")
-    axes[1,1].hist(y_pred, bins=20, range=y_range, edgecolor='blue', label=r'$\hat{y}$', alpha=0.5)
-    axes[1,1].set_title("y dist", fontsize=large_fontsize)
-    axes[1,1].set_xlabel('y (cm)', fontsize=large_fontsize)
-    # axes[1,1].set_ylabel('freq', fontsize=large_fontsize)
+#     y_range = (-250, 250)
+#     axes[1,1].hist(y, bins=20, range=y_range, edgecolor='black', label="y")
+#     axes[1,1].hist(y_pred, bins=20, range=y_range, edgecolor='blue', label=r'$\hat{y}$', alpha=0.5)
+#     axes[1,1].set_title("y dist", fontsize=large_fontsize)
+#     axes[1,1].set_xlabel('y (cm)', fontsize=large_fontsize)
+#     # axes[1,1].set_ylabel('freq', fontsize=large_fontsize)
 
-    z_range = (-250, 250)
-    axes[1,2].hist(x, bins=20, range=x_range, edgecolor='black', label="z")
-    axes[1,2].hist(x_pred, bins=20, range=x_range, edgecolor='blue', label=r'$\hat{z}$', alpha=0.5)
-    axes[1,2].set_title("z dist", fontsize=large_fontsize)
-    axes[1,2].set_xlabel(r'z (cm)', fontsize=large_fontsize)
-    # axes[1,2].set_ylabel('freq', fontsize=large_fontsize)
+#     z_range = (-250, 250)
+#     axes[1,2].hist(x, bins=20, range=x_range, edgecolor='black', label="z")
+#     axes[1,2].hist(x_pred, bins=20, range=x_range, edgecolor='blue', label=r'$\hat{z}$', alpha=0.5)
+#     axes[1,2].set_title("z dist", fontsize=large_fontsize)
+#     axes[1,2].set_xlabel(r'z (cm)', fontsize=large_fontsize)
+#     # axes[1,2].set_ylabel('freq', fontsize=large_fontsize)
 
-    energy_range = (0, 4)
-    axes[1,3].hist(energy, bins=20, range=energy_range, edgecolor='black', label="label")
-    axes[1,3].hist(energy_pred, bins=20, range=energy_range, edgecolor='blue', label="pred", alpha=0.5)
-    axes[1,3].set_title(r"energy_diff ($energy - \hat{energy}$)", fontsize=large_fontsize)
-    axes[1,3].set_xlabel('Energy diff (MeV)', fontsize=large_fontsize)
-    # axes[1,3].set_ylabel('freq', fontsize=large_fontsize)
+#     energy_range = (0, 4)
+#     axes[1,3].hist(energy, bins=20, range=energy_range, edgecolor='black', label="label")
+#     axes[1,3].hist(energy_pred, bins=20, range=energy_range, edgecolor='blue', label="pred", alpha=0.5)
+#     axes[1,3].set_title(r"energy_diff ($energy - \hat{energy}$)", fontsize=large_fontsize)
+#     axes[1,3].set_xlabel('Energy diff (MeV)', fontsize=large_fontsize)
+#     # axes[1,3].set_ylabel('freq', fontsize=large_fontsize)
 
-    axes[1, 0].legend()
-    axes[1, 1].legend()
-    axes[1, 2].legend()
+#     axes[1, 0].legend()
+#     axes[1, 1].legend()
+#     axes[1, 2].legend()
 
-    plt.savefig(f'./cgra_pointNET_last_hist.png')
-    plt.close()
-# also upload the saved image to wandb
-# wandb.log({"plot_reg": wandb.Image(save_name + "_hist.png")})
+#     plt.savefig(f'./cgra_pointNET_last_hist.png')
+#     plt.close()
+# # also upload the saved image to wandb
+# # wandb.log({"plot_reg": wandb.Image(save_name + "_hist.png")})
 
-'''
-Save & Reload
-'''
-save_model(model, 'cgra_model.h5')
-# loaded_model = load_qmodel("mnist.h5")
-# model.save("mnist.keras")
-# loaded_model = tf.keras.saving.load_model("mnist.keras")
+# '''
+# Save & Reload
+# '''
+# save_model(model, 'cgra_model.h5')
+# # loaded_model = load_qmodel("mnist.h5")
+# # model.save("mnist.keras")
+# # loaded_model = tf.keras.saving.load_model("mnist.keras")
 
-#score = loaded_model.evaluate(test_loader, verbose=0)
-#print(f"Test loss:{score[0]}, Test accuracy:{score[1]}")
-
-
+# #score = loaded_model.evaluate(test_loader, verbose=0)
+# #print(f"Test loss:{score[0]}, Test accuracy:{score[1]}")
 
 
-def product_dict(**kwargs):
-    for instance in itertools.product(*(kwargs.values())):
-        yield dict(zip(kwargs.keys(), instance))
-
-@pytest.mark.parametrize("PARAMS", list(product_dict(
-                                        processing_elements  = [(16,32)   ],
-                                        frequency_mhz        = [ 250     ],
-                                        bits_input           = [ 8       ],
-                                        bits_weights         = [ 8       ],
-                                        bits_sum             = [ 32      ],
-                                        bits_bias            = [ 16      ],
-                                        max_batch_size       = [ 128      ], 
-                                        max_channels_in      = [ 2048    ],
-                                        max_kernel_size      = [ 9       ],
-                                        max_image_size       = [ 2126    ],
-                                        max_n_bundles        = [ 64      ],
-                                        ram_weights_depth    = [ 20      ],
-                                        ram_edges_depth      = [ 288     ],
-                                        axi_width            = [ 128      ],
-                                        config_baseaddr      = ["B0000000"],
-                                        target_cpu_int_bits  = [ 32       ],
-                                        valid_prob           = [ 1     ],
-                                        ready_prob           = [ 1     ],
-                                        data_dir             = ['vectors'],
-                                    )))
-def test_dnn_engine(PARAMS):
-
-    '''
-    SPECIFY HARDWARE
-    '''
-    hw = Hardware (**PARAMS)
-    hw.export_json()
-    hw = Hardware.from_json('hardware.json')
-    hw.export() # Generates: config_hw.svh, config_hw.tcl
-    hw.export_vivado_tcl(board='zcu104')
 
 
-    '''
-    VERIFY & EXPORT
-    '''
-    export_inference(model, hw, custom_input=deploy_val_X)
-    # verify_inference(loaded_model, hw, SIM=SIM, SIM_PATH=SIM_PATH)
+# def product_dict(**kwargs):
+#     for instance in itertools.product(*(kwargs.values())):
+#         yield dict(zip(kwargs.keys(), instance))
 
-    d_perf = predict_model_performance(hw)
-    pp = pprint.PrettyPrinter(indent=4)
-    print(f"Predicted Performance")
-    pp.pprint(d_perf)
+# @pytest.mark.parametrize("PARAMS", list(product_dict(
+#                                         processing_elements  = [(16,32)   ],
+#                                         frequency_mhz        = [ 250     ],
+#                                         bits_input           = [ 8       ],
+#                                         bits_weights         = [ 8       ],
+#                                         bits_sum             = [ 32      ],
+#                                         bits_bias            = [ 16      ],
+#                                         max_batch_size       = [ 128      ], 
+#                                         max_channels_in      = [ 2048    ],
+#                                         max_kernel_size      = [ 9       ],
+#                                         max_image_size       = [ 2126    ],
+#                                         max_n_bundles        = [ 64      ],
+#                                         ram_weights_depth    = [ 20      ],
+#                                         ram_edges_depth      = [ 288     ],
+#                                         axi_width            = [ 128      ],
+#                                         config_baseaddr      = ["B0000000"],
+#                                         target_cpu_int_bits  = [ 32       ],
+#                                         valid_prob           = [ 1     ],
+#                                         ready_prob           = [ 1     ],
+#                                         data_dir             = ['vectors'],
+#                                     )))
+# def test_dnn_engine(PARAMS):
+
+#     '''
+#     SPECIFY HARDWARE
+#     '''
+#     hw = Hardware (**PARAMS)
+#     hw.export_json()
+#     hw = Hardware.from_json('hardware.json')
+#     hw.export() # Generates: config_hw.svh, config_hw.tcl
+#     hw.export_vivado_tcl(board='zcu104')
+
+
+#     '''
+#     VERIFY & EXPORT
+#     '''
+#     export_inference(model, hw, custom_input=deploy_val_X)
+#     # verify_inference(loaded_model, hw, SIM=SIM, SIM_PATH=SIM_PATH)
+
+#     d_perf = predict_model_performance(hw)
+#     pp = pprint.PrettyPrinter(indent=4)
+#     print(f"Predicted Performance")
+#     pp.pprint(d_perf)
+
