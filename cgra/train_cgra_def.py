@@ -177,25 +177,25 @@ class UserModel(XModel):
             #    act=XActivation(sys_bits=sys_bits, o_int_bits=0, type=None)),
         )
 
+        # self.b3 = XBundle( 
+        #     core=XDense(
+        #         k_int_bits=0,
+        #         b_int_bits=0,
+        #         units=int(512 / dim_reduce_factor),
+        #         # units = out_dim,
+        #         act=XActivation(sys_bits=sys_bits, o_int_bits=0, type='relu', slope=0.125)
+        #     ),
+        #     # flatten=True
+        # )
+
         self.b3 = XBundle( 
             core=XDense(
                 k_int_bits=0,
                 b_int_bits=0,
-                units=int(512 / dim_reduce_factor),
-                # units = out_dim,
+                units=int(128 / dim_reduce_factor),
                 act=XActivation(sys_bits=sys_bits, o_int_bits=0, type='relu', slope=0.125)
-            ),
-            # flatten=True
+            )
         )
-
-        # self.b4 = XBundle( 
-        #     core=XDense(
-        #         k_int_bits=0,
-        #         b_int_bits=0,
-        #         units=int(128 / dim_reduce_factor),
-        #         act=XActivation(sys_bits=sys_bits, o_int_bits=0, type='relu', slope=0.125)
-        #     )
-        # )
 
         self.b4 = XBundle(
             core=XDense(
