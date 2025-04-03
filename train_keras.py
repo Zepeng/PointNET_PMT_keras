@@ -21,8 +21,8 @@ import datetime
 from sklearn.preprocessing import MinMaxScaler
 
 # tensorboard
-log_dir = "/home/amigala/tflogs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-log_writer = tf.summary.create_file_writer(log_dir)
+# log_dir = "/home/amigala/tflogs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+# log_writer = tf.summary.create_file_writer(log_dir)
 # tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
 
 strt = time()
@@ -64,17 +64,16 @@ save_name = f"./{ver}/pointNET_keras.weights"
 
 ## Load/Preprocess Data
 ## Load data
-pmtxyz = get_pmtxyz("/home/amigala/PointNET_PMT_keras/data/pmt_xyz.dat")
+pmtxyz = get_pmtxyz("/home/amehta/PointNET_PMT_keras/data/pmt_xyz.dat")
 #X.to(torch.float32)
 #y.to(torch.float32)
-data_npz = np.load('/home/amigala/PointNET_PMT_keras/data/train_X_y_ver_all_xyz_energy.npz')
+data_npz = np.load('/home/amehta/PointNET_PMT_keras/data/train_X_y_ver_all_xyz_energy.npz')
 X_tf = tf.convert_to_tensor(data_npz['X'], dtype=tf.float32)
 y_tf = tf.convert_to_tensor(data_npz['y'], dtype=tf.float32)
 if args.debug:
     small = 5000
     X_tf, y_tf = X_tf[:small], y_tf[:small]
 print(X_tf.shape)
-assert 0
 
 ## switch to match Aobo's syntax (time, charge, x, y, z) -> (x, y, z, label, time, charge)
 ## insert "label" feature to tensor. This feature (0 or 1) is the activation of sensor

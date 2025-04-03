@@ -137,4 +137,4 @@ dependencies:
       - urllib3==2.2.2
       - werkzeug==3.0.3
       - wrapt==1.14.1
-prefix: /home/amigala/miniconda3/envs/fpga
+prefix: /home/amehta/.conda/envs/fpga

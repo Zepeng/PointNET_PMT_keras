@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from scipy.stats import norm, chisquare
 import numpy as np
 
-LOAD_NAME = './cgra/cgra_pointnet_8bit'
+LOAD_NAME = './cgra/cgra_pointnet'
 
 with open(f'{LOAD_NAME}.pickle', 'rb') as handle:
     save_data = pickle.load(handle)
