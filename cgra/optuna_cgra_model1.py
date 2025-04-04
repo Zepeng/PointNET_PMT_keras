@@ -13,31 +13,32 @@ from keras.utils import to_categorical
 from qkeras.utils import load_qmodel
 import numpy as np
 import pprint
-#from read_point_cloud import *
+#from read_point_cloud import * 
 #from preprocess import *
 import tensorflow as tf
 #tf.keras.utils.set_random_seed(0)
-#import wandb
 from tqdm import tqdm
 from time import time
 from PointNet_merge import *
-from read_point_cloud import *
+from read_point_cloud import * 
 from utils import *
-import inspect
 
+# from deepsocflow import *
+from deepsocflow1.deepsocflow2.py.xbundle import *
 from sklearn.preprocessing import MinMaxScaler
 import matplotlib
 import pickle
 matplotlib.rc('xtick', labelsize=15)
 matplotlib.rc('ytick', labelsize=15)
+import utils1
 
-from deepsocflow1.deepsocflow2.py.xbundle import *
-import json
-
-#Avi added code
-import optuna
+import scipy
+import pickle
+import matplotlib.pyplot as plt
+from scipy.stats import norm, chisquare
+import numpy as np
 import joblib
-
+import optuna
 
 (SIM, SIM_PATH) = ('xsim', "F:/Xilinx/Vivado/2022.2/bin/") if os.name=='nt' else ('verilator', '')
 np.random.seed(42)
@@ -125,8 +126,20 @@ def objective(trial):
     x_b1 = trial.suggest_categorical("x_b1", [2, 4, 8, 12, 16])
     k_b1 = trial.suggest_categorical("k_b1", [2, 4, 8, 12, 16])
 
+    x_b2 = trial.suggest_categorical("x_b2", [2, 4, 8, 12, 16])
+    k_b2 = trial.suggest_categorical("k_b2", [2, 4, 8, 12, 16])
+
+    x_b3 = trial.suggest_categorical("x_b3", [2, 4, 8, 12, 16])
+    k_b3 = trial.suggest_categorical("k_b3", [2, 4, 8, 12, 16])
+    
+    x_b4 = trial.suggest_categorical("x_b4", [2, 4, 8, 12, 16])
+    k_b4 = trial.suggest_categorical("k_b4", [2, 4, 8, 12, 16])
+
     sys_bits_b0 = SYS_BITS(x=x_b0, k=k_b0, b=16)
     sys_bits_b1 = SYS_BITS(x=x_b1, k=k_b1, b=16)
+    sys_bits_b2 = SYS_BITS(x=x_b2, k=k_b2, b=16)
+    sys_bits_b3 = SYS_BITS(x=x_b3, k=k_b3, b=16)
+    sys_bits_b4 = SYS_BITS(x=x_b4, k=k_b4, b=16)
 
     # WILL USE LATER #
     # # Tune kernel sizes for convolutional layers
@@ -149,6 +162,9 @@ def objective(trial):
         sys_bits_b0=sys_bits_b0,
         x_int_bits=0,
         sys_bits_b1=sys_bits_b1,
+        sys_bits_b2=sys_bits_b2,
+        sys_bits_b3=sys_bits_b3,
+        sys_bits_b4=sys_bits_b4,
         # kernel_sizes={"b0": kernel_size_b0, "b1": kernel_size_b1, "b2": kernel_size_b2},
         # filters={"b0": filters_b0, "b1": filters_b1, "b2": filters_b2},
         # units={"b3": units_b3, "b4": units_b4}
@@ -159,7 +175,7 @@ def objective(trial):
     optimizer = tf.keras.optimizers.Adam(learning_rate=1e-3)
     model.compile(optimizer=optimizer, loss='mse', metrics=['mse'])
 
-    TRAINING_EPOCHS = 7
+    TRAINING_EPOCHS = 15
     total_train_loss = []
     total_val_loss = 0
 
@@ -229,38 +245,79 @@ out_dim = y_tf.shape[-1]
 
 @keras.saving.register_keras_serializable()
 class UserModel(XModel):
-    def __init__(self, sys_bits_b0, x_int_bits, sys_bits_b1, *args, **kwargs):
+    def __init__(self, sys_bits_b0, x_int_bits, sys_bits_b1, sys_bits_b2, 
+                 sys_bits_b3, sys_bits_b4, *args, **kwargs):
         super().__init__(sys_bits_b0, x_int_bits, *args, **kwargs)
         
         # Save hyperparameters for later use
         self.sys_bits_b0 = sys_bits_b0
         self.sys_bits_b1 = sys_bits_b1
+        self.sys_bits_b2 = sys_bits_b2
+        self.sys_bits_b3 = sys_bits_b3
+        self.sys_bits_b4 = sys_bits_b4
 
-      
         self.b0 = XBundle(
+            core=XConvBN(
+                k_int_bits=0,
+                b_int_bits=0,
+                filters=64,
+                kernel_size=1,
+                act=XActivation(sys_bits=self.sys_bits_b0, o_int_bits=0, type='relu', slope=0)
+            ),
+        )
+      
+        self.b1 = XBundle(
+            core=XConvBN(
+                k_int_bits=0,
+                b_int_bits=0,
+                filters=int(128/2),
+                kernel_size=1,
+                act=XActivation(sys_bits=self.sys_bits_b1, o_int_bits=0, type='relu', slope=0),
+            ),
+        )
+      
+        self.b2 = XBundle(
             core=XConvBN(
                 k_int_bits=0,
                 b_int_bits=0,
                 filters=int(1024 / 2),
                 kernel_size=1,
-                act=XActivation(sys_bits=self.sys_bits_b0, o_int_bits=0, type='relu', slope=0)
+                act=XActivation(sys_bits=self.sys_bits_b2, o_int_bits=0, type='relu', slope=0)
             ),
             pool=XPool(
                 type='avg',
                 pool_size=(2126, 1),
                 strides=(2126, 1),
                 padding='same',
-                act=XActivation(sys_bits=self.sys_bits_b0, o_int_bits=0, type=None),
+                act=XActivation(sys_bits=self.sys_bits_b2, o_int_bits=0, type=None),
             ),
             flatten=True
         )
 
-        self.b1 = XBundle(
+        self.b3 = XBundle(
+            core=XDense(
+                k_int_bits=0,
+                b_int_bits=0,
+                units=int(512 / 2),
+                act=XActivation(sys_bits=self.sys_bits_b3, o_int_bits=0, type='relu', slope=0.125)
+            ),
+        )
+
+        # self.b4 = XBundle(
+        #     core=XDense(
+        #         k_int_bits=0,
+        #         b_int_bits=0,
+        #         units=int(128 / 2),
+        #         act=XActivation(sys_bits=self.sys_bits_b4, o_int_bits=0, type='relu', slope=0.125)
+        #     )
+        # )
+
+        self.b4 = XBundle(
             core=XDense(
                 k_int_bits=0,
                 b_int_bits=0,
                 units=out_dim,
-                act=XActivation(sys_bits=self.sys_bits_b1, o_int_bits=0, type=None)
+                act=XActivation(sys_bits=self.sys_bits_b4, o_int_bits=0, type=None)
             ),
         )
 
@@ -268,12 +325,15 @@ class UserModel(XModel):
         x = self.input_quant_layer(x)
         x = self.b0(x)
         x = self.b1(x)
+        x = self.b2(x)
+        x = self.b3(x)
+        x = self.b4(x)
         return x
 
 
 
 # Set up and run the Optuna study
-study = optuna.create_study(direction="minimize", storage=storage)  # Minimizing loss
+study = optuna.create_study(study_name="MODEL1_sys_bits_per_layer1(hopefully_final)", direction="minimize", storage=storage)  # Minimizing loss
 study.optimize(objective, n_trials=10, callbacks=[save_results_callback])
 
 # # Contour plot for kernel sizes
@@ -306,14 +366,15 @@ study.optimize(objective, n_trials=10, callbacks=[save_results_callback])
 # Optionally, you could also plot sys bits parameters if desired:
 fig_sys_bits = optuna.visualization.plot_parallel_coordinate(
     study,
-    params=["x_b0", "k_b0", "x_b1", "k_b1"]
+    params=["x_b0", "k_b0", "x_b1", "k_b1", "x_b2", "k_b2",
+            "x_b3", "k_b3", "x_b4", "k_b4"]
 )
 fig_sys_bits.write_html("optuna_parallel_sys_bits.html")
 
 ##################
 ## Contour plot ##
 ##################
-layers = ["b0", "b1"]
+layers = ["b0", "b1", "b2", "b3", "b4"]
 
 for layer in layers:
     # Construct the parameter names for x and k
@@ -324,7 +385,7 @@ for layer in layers:
     fig = optuna.visualization.plot_contour(study, params=[param_x, param_k])
     
     # Save the plot as an HTML file
-    fig.write_html(f"optuna_contour_{layer}.html")
+    fig.write_html(f"model1_optuna_contour_{layer}.html")
 
 
 # Output best trial details

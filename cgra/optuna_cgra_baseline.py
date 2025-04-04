@@ -13,31 +13,32 @@ from keras.utils import to_categorical
 from qkeras.utils import load_qmodel
 import numpy as np
 import pprint
-#from read_point_cloud import *
+#from read_point_cloud import * 
 #from preprocess import *
 import tensorflow as tf
 #tf.keras.utils.set_random_seed(0)
-#import wandb
 from tqdm import tqdm
 from time import time
 from PointNet_merge import *
-from read_point_cloud import *
+from read_point_cloud import * 
 from utils import *
-import inspect
 
+# from deepsocflow import *
+from deepsocflow1.deepsocflow2.py.xbundle import *
 from sklearn.preprocessing import MinMaxScaler
 import matplotlib
 import pickle
 matplotlib.rc('xtick', labelsize=15)
 matplotlib.rc('ytick', labelsize=15)
+import utils1
 
-from deepsocflow1.deepsocflow2.py.xbundle import *
-import json
-
-#Avi added code
-import optuna
+import scipy
+import pickle
+import matplotlib.pyplot as plt
+from scipy.stats import norm, chisquare
+import numpy as np
 import joblib
-
+import optuna
 
 (SIM, SIM_PATH) = ('xsim', "F:/Xilinx/Vivado/2022.2/bin/") if os.name=='nt' else ('verilator', '')
 np.random.seed(42)
@@ -339,7 +340,7 @@ class UserModel(XModel):
 
 
 # Set up and run the Optuna study
-study = optuna.create_study(direction="minimize", storage=storage)  # Minimizing loss
+study = optuna.create_study(study_name="baseline_sys_bits_per_layer(hopefully_final)", direction="minimize", storage=storage)  # Minimizing loss
 study.optimize(objective, n_trials=10, callbacks=[save_results_callback])
 
 # # Contour plot for kernel sizes
@@ -370,12 +371,12 @@ study.optimize(objective, n_trials=10, callbacks=[save_results_callback])
 # fig_parallel.write_html("optuna_parallel_coordinate.html")
 
 # Optionally, you could also plot sys bits parameters if desired:
-fig_sys_bits = optuna.visualization.plot_parallel_coordinate(
-    study,
-    params=["x_b0", "k_b0", "x_b1", "k_b1", "x_b2", "k_b2",
-            "x_b3", "k_b3", "x_b4", "k_b4", "x_b5", "k_b5"]
-)
-fig_sys_bits.write_html("optuna_parallel_sys_bits.html")
+# fig_sys_bits = optuna.visualization.plot_parallel_coordinate(
+#     study,
+#     params=["x_b0", "k_b0", "x_b1", "k_b1", "x_b2", "k_b2",
+#             "x_b3", "k_b3", "x_b4", "k_b4", "x_b5", "k_b5"]
+# )
+# fig_sys_bits.write_html("optuna_parallel_sys_bits.html")
 
 ##################
 ## Contour plot ##
@@ -391,7 +392,7 @@ for layer in layers:
     fig = optuna.visualization.plot_contour(study, params=[param_x, param_k])
     
     # Save the plot as an HTML file
-    fig.write_html(f"optuna_contour_{layer}.html")
+    fig.write_html(f"baseline_optuna_contour_{layer}.html")
 
 
 # Output best trial details
