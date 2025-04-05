@@ -1,4 +1,4 @@
-name: cgra
+name: cgra2
 channels:
   - anaconda
   - nvidia

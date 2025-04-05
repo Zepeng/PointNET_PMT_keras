@@ -120,41 +120,22 @@ storage = optuna.storages.RDBStorage(
 
 def objective(trial):
     # Tune sys bits for each layer independently
-    x_b0 = trial.suggest_categorical("x_b0", [2, 4, 8, 12, 16])
-    k_b0 = trial.suggest_categorical("k_b0", [2, 4, 8, 12, 16])
-
-    x_b1 = trial.suggest_categorical("x_b1", [2, 4, 8, 12, 16])
-    k_b1 = trial.suggest_categorical("k_b1", [2, 4, 8, 12, 16])
-
-    x_b2 = trial.suggest_categorical("x_b2", [2, 4, 8, 12, 16])
-    k_b2 = trial.suggest_categorical("k_b2", [2, 4, 8, 12, 16])
-
-    x_b3 = trial.suggest_categorical("x_b3", [2, 4, 8, 12, 16])
-    k_b3 = trial.suggest_categorical("k_b3", [2, 4, 8, 12, 16])
-    
-    x_b4 = trial.suggest_categorical("x_b4", [2, 4, 8, 12, 16])
-    k_b4 = trial.suggest_categorical("k_b4", [2, 4, 8, 12, 16])
-    
-    x_b5 = trial.suggest_categorical("x_b5", [2, 4, 8, 12, 16])
-    k_b5 = trial.suggest_categorical("k_b5", [2, 4, 8, 12, 16])
-
-    sys_bits_b0 = SYS_BITS(x=x_b0, k=k_b0, b=16)
-    sys_bits_b1 = SYS_BITS(x=x_b1, k=k_b1, b=16)
-    sys_bits_b2 = SYS_BITS(x=x_b2, k=k_b2, b=16)
-    sys_bits_b3 = SYS_BITS(x=x_b3, k=k_b3, b=16)
-    sys_bits_b4 = SYS_BITS(x=x_b4, k=k_b4, b=16)
-    sys_bits_b5 = SYS_BITS(x=x_b5, k=k_b5, b=16)
+    sys_bits_b0 = SYS_BITS(x=4, k=2, b=16)
+    sys_bits_b1 = SYS_BITS(x=8, k=2, b=16)
+    sys_bits_b2 = SYS_BITS(x=2, k=4, b=16)
+    sys_bits_b3 = SYS_BITS(x=16, k=12, b=16)
+    sys_bits_b4 = SYS_BITS(x=4, k=8, b=16)
 
     # WILL USE LATER #
-    # # Tune kernel sizes for convolutional layers
-    # kernel_size_b0 = trial.suggest_categorical("kernel_size_b0", [1, 3, 5, 7])
-    # kernel_size_b1 = trial.suggest_categorical("kernel_size_b1", [1, 3, 5])
-    # kernel_size_b2 = trial.suggest_categorical("kernel_size_b2", [1, 3, 5])
+    # Tune kernel sizes for convolutional layers
+    kernel_size_b0 = trial.suggest_categorical("kernel_size_b0", [1, 3, 5, 7])
+    kernel_size_b1 = trial.suggest_categorical("kernel_size_b1", [1, 3, 5, 7])
+    kernel_size_b2 = trial.suggest_categorical("kernel_size_b2", [1, 3, 5, 7])
     
-    # # Optionally tune filters for conv layers
-    # filters_b0 = trial.suggest_categorical("filters_b0", [32, 64, 128])
-    # filters_b1 = trial.suggest_categorical("filters_b1", [64, 128, 256])
-    # filters_b2 = trial.suggest_categorical("filters_b2", [128, 256, 512])
+    # Optionally tune filters for conv layers
+    filters_b0 = trial.suggest_categorical("filters_b0", [32, 64, 128])
+    filters_b1 = trial.suggest_categorical("filters_b1", [64, 128, 256, 512])
+    filters_b2 = trial.suggest_categorical("filters_b2", [128, 256, 512])
     
     # # Tune dense units for blocks b3 and b4
     # units_b3 = trial.suggest_categorical("units_b3", [64, 128, 256])
@@ -169,9 +150,8 @@ def objective(trial):
         sys_bits_b2=sys_bits_b2,
         sys_bits_b3=sys_bits_b3,
         sys_bits_b4=sys_bits_b4,
-        sys_bits_b5=sys_bits_b5,
-        # kernel_sizes={"b0": kernel_size_b0, "b1": kernel_size_b1, "b2": kernel_size_b2},
-        # filters={"b0": filters_b0, "b1": filters_b1, "b2": filters_b2},
+        kernel_sizes={"b0": kernel_size_b0, "b1": kernel_size_b1, "b2": kernel_size_b2},
+        filters={"b0": filters_b0, "b1": filters_b1, "b2": filters_b2},
         # units={"b3": units_b3, "b4": units_b4}
     )
     x = user_model(x_in)
@@ -180,7 +160,7 @@ def objective(trial):
     optimizer = tf.keras.optimizers.Adam(learning_rate=1e-3)
     model.compile(optimizer=optimizer, loss='mse', metrics=['mse'])
 
-    TRAINING_EPOCHS = 7
+    TRAINING_EPOCHS = 15
     total_train_loss = []
     total_val_loss = 0
 
@@ -251,7 +231,7 @@ out_dim = y_tf.shape[-1]
 @keras.saving.register_keras_serializable()
 class UserModel(XModel):
     def __init__(self, sys_bits_b0, x_int_bits, sys_bits_b1, sys_bits_b2, 
-                 sys_bits_b3, sys_bits_b4, sys_bits_b5, *args, **kwargs):
+                 sys_bits_b3, sys_bits_b4, kernel_sizes, filters, *args, **kwargs):
         super().__init__(sys_bits_b0, x_int_bits, *args, **kwargs)
         
         # Save hyperparameters for later use
@@ -260,14 +240,16 @@ class UserModel(XModel):
         self.sys_bits_b2 = sys_bits_b2
         self.sys_bits_b3 = sys_bits_b3
         self.sys_bits_b4 = sys_bits_b4
-        self.sys_bits_b5 = sys_bits_b5
+
+        self.kernel_sizes = kernel_sizes
+        self.filters = filters
 
         self.b0 = XBundle(
             core=XConvBN(
                 k_int_bits=0,
                 b_int_bits=0,
-                filters=64,
-                kernel_size=1,
+                filters=self.filters["b0"],
+                kernel_size=self.kernel_sizes["b0"],
                 act=XActivation(sys_bits=self.sys_bits_b0, o_int_bits=0, type='relu', slope=0)
             ),
         )
@@ -276,8 +258,8 @@ class UserModel(XModel):
             core=XConvBN(
                 k_int_bits=0,
                 b_int_bits=0,
-                filters=int(128/2),
-                kernel_size=1,
+                filters=self.filters["b1"],
+                kernel_size=self.kernel_sizes["b1"],
                 act=XActivation(sys_bits=self.sys_bits_b1, o_int_bits=0, type='relu', slope=0),
             ),
         )
@@ -286,8 +268,8 @@ class UserModel(XModel):
             core=XConvBN(
                 k_int_bits=0,
                 b_int_bits=0,
-                filters=int(1024 / 2),
-                kernel_size=1,
+                filters=self.filters["b2"],
+                kernel_size=self.kernel_sizes["b2"],
                 act=XActivation(sys_bits=self.sys_bits_b2, o_int_bits=0, type='relu', slope=0)
             ),
             pool=XPool(
@@ -309,21 +291,21 @@ class UserModel(XModel):
             ),
         )
 
+        # self.b4 = XBundle(
+        #     core=XDense(
+        #         k_int_bits=0,
+        #         b_int_bits=0,
+        #         units=int(128 / 2),
+        #         act=XActivation(sys_bits=self.sys_bits_b4, o_int_bits=0, type='relu', slope=0.125)
+        #     )
+        # )
+
         self.b4 = XBundle(
             core=XDense(
                 k_int_bits=0,
                 b_int_bits=0,
-                units=int(128 / 2),
-                act=XActivation(sys_bits=self.sys_bits_b4, o_int_bits=0, type='relu', slope=0.125)
-            )
-        )
-
-        self.b5 = XBundle(
-            core=XDense(
-                k_int_bits=0,
-                b_int_bits=0,
                 units=out_dim,
-                act=XActivation(sys_bits=self.sys_bits_b5, o_int_bits=0, type=None)
+                act=XActivation(sys_bits=self.sys_bits_b4, o_int_bits=0, type=None)
             ),
         )
 
@@ -334,65 +316,28 @@ class UserModel(XModel):
         x = self.b2(x)
         x = self.b3(x)
         x = self.b4(x)
-        x = self.b5(x)
         return x
 
 
 
 # Set up and run the Optuna study
-study = optuna.create_study(study_name="baseline_sys_bits_per_layer(hopefully_final)", direction="minimize", storage=storage)  # Minimizing loss
+study = optuna.create_study(study_name="model1_kf_b012(hopefully_final)", direction="minimize", storage=storage)  # Minimizing loss
 study.optimize(objective, n_trials=10, callbacks=[save_results_callback])
-
-# # Contour plot for kernel sizes
-# fig_kernel = optuna.visualization.plot_contour(
-#     study, params=["kernel_size_b0", "kernel_size_b1", "kernel_size_b2"]
-# )
-# fig_kernel.write_html("optuna_contour_kernel_sizes.html")
-
-# # Contour plot for filters
-# fig_filters = optuna.visualization.plot_contour(
-#     study, params=["filters_b0", "filters_b1", "filters_b2"]
-# )
-# fig_filters.write_html("optuna_contour_filters.html")
-
-# # Contour plot for dense units
-# fig_units = optuna.visualization.plot_contour(
-#     study, params=["units_b3", "units_b4"]
-# )
-# fig_units.write_html("optuna_contour_units.html")
-
-# Parallel coordinate plot for kernel sizes, filters, and dense units together
-# fig_parallel = optuna.visualization.plot_parallel_coordinate(
-#     study,
-#     params=["kernel_size_b0", "kernel_size_b1", "kernel_size_b2",
-#             "filters_b0", "filters_b1", "filters_b2",
-#             "units_b3", "units_b4"]
-# )
-# fig_parallel.write_html("optuna_parallel_coordinate.html")
-
-# Optionally, you could also plot sys bits parameters if desired:
-# fig_sys_bits = optuna.visualization.plot_parallel_coordinate(
-#     study,
-#     params=["x_b0", "k_b0", "x_b1", "k_b1", "x_b2", "k_b2",
-#             "x_b3", "k_b3", "x_b4", "k_b4", "x_b5", "k_b5"]
-# )
-# fig_sys_bits.write_html("optuna_parallel_sys_bits.html")
 
 ##################
 ## Contour plot ##
 ##################
-layers = ["b0", "b1", "b2", "b3", "b4", "b5"]
-
-for layer in layers:
-    # Construct the parameter names for x and k
-    param_x = f"x_{layer}"
-    param_k = f"k_{layer}"
+for layer in ["b0", "b1", "b2"]:
+    # Define the parameter names for kernel size and filters for the current layer
+    param_kernel = f"kernel_size_{layer}"
+    param_filters = f"filters_{layer}"
     
-    # Create the contour plot for the given layer's x and k
-    fig = optuna.visualization.plot_contour(study, params=[param_x, param_k])
+    # Create a contour plot using both the kernel size and filters parameters
+    fig = optuna.visualization.plot_contour(study, params=[param_kernel, param_filters])
     
     # Save the plot as an HTML file
-    fig.write_html(f"baseline_optuna_contour_{layer}.html")
+    fig.write_html(f"model1_kf__optuna_contour_{layer}.html")
+
 
 
 # Output best trial details
